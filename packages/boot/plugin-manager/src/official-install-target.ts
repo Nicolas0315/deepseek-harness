@@ -1,4 +1,6 @@
 /** Select Official bundle packages from the running installation without importing provider code. */
+import { diagnosticMessages } from './diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import { existsSync, globSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { bundlePatchPaths, type ProfileManifest } from '@deepseek-ai/dsh-app-boot'
@@ -18,10 +20,14 @@ function manifestAt(file: string): WorkspaceManifest {
  * @param name - Official catalog package name.
  * @param installAnchor - Running application's DSH package.json, possibly reached through a symlink.
  * @param version - Running DSH version used by its release family.
+ * @param locale Captured operation language; omitted, resolves the inherited environment.
  * @returns An ordinary package-manager spec and its package version.
  * @throws when a source installation lacks its workspace package, bundle patch, or built runtime.
  */
-export function officialBundleInstallTarget(name: string, installAnchor: string, version: string): { spec: string; version: string } {
+export function officialBundleInstallTarget(
+  name: string, installAnchor: string, version: string, locale?: DiagnosticLocale,
+): { spec: string; version: string } {
+  const messages = diagnosticMessages(locale)
   const anchor = realpathSync(installAnchor)
   const installation = manifestAt(anchor)
   const source = installation.name === '@deepseek-ai/dsh'
@@ -31,27 +37,27 @@ export function officialBundleInstallTarget(name: string, installAnchor: string,
   if (anchor !== join(root, 'apps', 'cli', 'package.json')
     || !existsSync(join(root, 'package.json'))
     || manifestAt(join(root, 'package.json')).name !== '@deepseek-ai/dsh-root') {
-    throw new Error(`Official bundle ${name}: source DSH installation ${anchor} requires its complete workspace checkout`)
+    throw new Error(messages.officialBundleSourceDSHInstallationRequiresItsCompleteWorkspace(name, anchor))
   }
   const matches = globSync('packages/*/*/package.json', { cwd: root })
     .map(file => ({ file: join(root, file), manifest: manifestAt(join(root, file)) }))
     .filter(entry => entry.manifest.name === name)
   const selected = matches[0]
   if (matches.length !== 1 || selected === undefined) {
-    throw new Error(`Official bundle ${name}: expected one workspace package in ${root}, found ${matches.length}; restore the checkout and run pnpm install`)
+    throw new Error(messages.officialBundleExpectedOneWorkspacePackageInFoundRestore(name, root, String(matches.length)))
   }
   const { file, manifest } = selected
   const directory = realpathSync(dirname(file))
   if (manifest.version !== version || manifest.private === true || manifest.dsh?.bundle === undefined) {
-    throw new Error(`Official bundle ${name}: ${file} must declare a public bundle at DSH version ${version}`)
+    throw new Error(messages.officialBundleMustDeclareAPublicBundleAtDSH(name, file, version))
   }
   const main = typeof manifest.main === 'string' ? resolve(directory, manifest.main) : undefined
   if (main === undefined || !existsSync(main) || !statSync(main).isFile()) {
-    throw new Error(`Official bundle ${name}: built runtime is missing in ${directory}; run pnpm install and pnpm run build in ${root}`)
+    throw new Error(messages.officialBundleBuiltRuntimeIsMissingInRunPnpm(name, directory, root))
   }
-  for (const patch of bundlePatchPaths(directory, manifest.dsh.bundle)) {
+  for (const patch of bundlePatchPaths(directory, manifest.dsh.bundle, locale)) {
     if (!existsSync(patch) || !statSync(patch).isFile()) {
-      throw new Error(`Official bundle ${name}: bundle patch ${patch} is missing; restore the checkout`)
+      throw new Error(messages.officialBundleBundlePatchIsMissingRestoreTheCheckout(name, patch))
     }
   }
   return { spec: `link:${directory}`, version }

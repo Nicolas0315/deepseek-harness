@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Literal, TypeVar
@@ -20,6 +20,7 @@ import deepseek_harness_runtime
 from deepseek_harness_runtime._resources import run_office_process
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from ._messages import message as diagnostic, resolve_language
 from .errors import HarnessError, SdkProtocolError
 
 
@@ -90,6 +91,8 @@ class OfficeOptions:
     timeout_ms bounds the engine operation, including font work and output,
     after explicit resource download. The call waits for engine exit and cleanup.
     Font paths may be relative to cwd; fallback groups replace the kit defaults.
+    language selects diagnostics and child DSH_LANG; env overrides inherited variables.
+    Both apply to this operation independently of any HarnessClient.
     """
 
     timeout_ms: int | None = None
@@ -104,12 +107,14 @@ class OfficeOptions:
     font_directories: Sequence[str | os.PathLike[str]] | None = None
     initial_font_families: Sequence[str] | None = None
     font_fallbacks: Sequence[Sequence[str]] | None = None
+    language: Literal["en", "ja"] | None = None
+    env: Mapping[str, str] | None = None
 
     def _arguments(self) -> list[str]:
         arguments: list[str] = []
         for field in fields(self):
             value = getattr(self, field.name)
-            if value is None:
+            if value is None or field.name in {"language", "env"}:
                 continue
             if field.name == "font_directories":
                 for path in value:
@@ -133,9 +138,14 @@ _Result = TypeVar("_Result", bound=_OfficeModel)
 
 
 def _run(arguments: list[str], options: OfficeOptions | None, result_type: type[_Result]) -> _Result:
+    env = {**os.environ, **(options.env if options is not None and options.env is not None else {})}
+    language = resolve_language(env, options.language if options is not None else None)
+    env["DSH_LANG"] = language
     process = run_office_process(
-        [*deepseek_harness_runtime.resolve_office_launch_args(), *arguments,
+        [*deepseek_harness_runtime.resolve_office_launch_args(language=language, env=env), *arguments,
          *(options._arguments() if options is not None else [])],
+        language=language,
+        env=env,
     )
     stdout, stderr = process.stdout, process.stderr
     if process.returncode != 0:
@@ -143,13 +153,13 @@ def _run(arguments: list[str], options: OfficeOptions | None, result_type: type[
             failure = _CliFailure.model_validate_json(stderr)
         except ValidationError:
             raise OfficeError("failed", stderr.decode("utf-8", errors="replace").strip()
-                              or "Office CLI exited without a diagnostic.",
+                              or diagnostic("office_empty", language),
                               process.returncode) from None
         raise OfficeError(failure.code, failure.error, process.returncode)
     try:
         return result_type.model_validate_json(stdout)
     except ValidationError as error:
-        raise SdkProtocolError("Office CLI returned an invalid result.") from error
+        raise SdkProtocolError(diagnostic("office_invalid", language)) from error
 
 
 def render_images(

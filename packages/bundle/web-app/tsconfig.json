@@ -43,6 +43,9 @@
     },
     {
       "path": "../../subprocess/subprocess"
+    },
+    {
+      "path": "../../util/diagnostic-locale"
     }
   ]
 }

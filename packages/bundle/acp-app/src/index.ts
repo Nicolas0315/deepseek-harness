@@ -5,9 +5,10 @@
  * @module @deepseek-ai/dsh-acp-app
  */
 
+import { diagnosticMessages } from './diagnostics.ts'
 import { Command } from 'commander'
 import type { Context } from '@deepseek-ai/cordis'
-import { exitOnStdinEnd, parseCmdline } from '@deepseek-ai/dsh-cmdline'
+import { exitOnStdinEnd, parseCmdline, resolveCommandLocale } from '@deepseek-ai/dsh-cmdline'
 
 /** Stable Cordis plugin name. */
 export const name = 'acp-app-startup'
@@ -22,15 +23,12 @@ export const ACP_APP_STARTUP_SERVICE = 'acpAppStartup'
  * Build this app's zero-option command and help.
  * @returns a fresh program for one invocation.
  */
-function acpCommand(): Command {
+function acpCommand(messages: ReturnType<typeof diagnosticMessages>): Command {
   return new Command()
     .name('dsh --profile acp')
-    .description('Serve automation clients over Agent Client Protocol stdio.')
-    .helpOption('-h, --help', 'show this help')
-    .addHelpText('after', `
-Example:
-  dsh --profile acp     serve ACP until the client disconnects
-`)
+    .description(messages.serveAutomationClientsOverAgentClientProtocolStdio)
+    .helpOption('-h, --help', messages.showThisHelp)
+    .addHelpText('after', messages.exampleDshProfileAcpServeACPUntilTheClient)
 }
 
 /**
@@ -39,7 +37,8 @@ Example:
  * @param ctx - plugin context carrying command-line and exit launcher values.
  */
 export function apply(ctx: Context): void {
-  const program = acpCommand()
+  const messages = diagnosticMessages(resolveCommandLocale(ctx))
+  const program = acpCommand(messages)
   program.action(() => {
     exitOnStdinEnd(ctx, 'acp-app.stdin')
     ctx.provide(ACP_APP_STARTUP_SERVICE, { accepted: true })

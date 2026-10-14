@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-10-14-japanese-session-search.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-14-japanese-session-search.md
+/agent-note-japanese-session-content-search:
+  en: 0c6a183df859b499
+  zh: 292f47e2a0b14a44
+/agent-note-japanese-session-content-search/problem:
+  en: 379344dddea942dc
+  zh: a5e3cd00e4d402de
+/agent-note-japanese-session-content-search/decision:
+  en: 468840bc98b538f0
+  zh: 124ab7970c49c893
+/agent-note-japanese-session-content-search/alternatives-considered:
+  en: 9ae3402f222ed682
+  zh: 2bab8feca93006da
+/agent-note-japanese-session-content-search/consequences:
+  en: fac7de253ad1fd59
+  zh: d1603621026a620a

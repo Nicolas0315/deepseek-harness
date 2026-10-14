@@ -1,5 +1,7 @@
 /** Package metadata resolved through one runtime interception. */
 
+import { diagnosticMessages, resolveBootLocale } from '../diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
@@ -58,6 +60,7 @@ function readPackage(dir: string, fallbackName: string): PluginPackage | undefin
 
 /** Package lookup shared by metadata consumers in one profile process. */
 export class PluginPackages extends Service {
+  private readonly locale: DiagnosticLocale
   private packages = new Map<string, PluginPackage | undefined>()
   private readonly interception: RuntimeInterception | undefined
   private disposeWorkerResolution: (() => void) | undefined
@@ -65,10 +68,11 @@ export class PluginPackages extends Service {
 
   constructor(ctx: Context, config: PluginPackagesConfig = {}) {
     super(ctx, 'pluginPackages')
+    this.locale = resolveBootLocale(ctx)
     if (config.resolution === undefined) return
     this.current = config.resolution
-    const interception = installRuntimeInterception(config.resolution)
-    this.disposeWorkerResolution = registerWorkerResolution(config.resolution)
+    const interception = installRuntimeInterception(config.resolution, this.locale)
+    this.disposeWorkerResolution = registerWorkerResolution(config.resolution, this.locale)
     this.interception = interception
     ctx.effect(() => () => {
       this.disposeWorkerResolution?.()
@@ -84,12 +88,13 @@ export class PluginPackages extends Service {
    * @param successor - fully constructed generation accepted by {@link RuntimeInterception.replace}.
    */
   replace(successor: RuntimeResolution): void {
-    if (this.interception === undefined) throw new Error('plugin-packages: runtime resolution is not installed')
+    const messages = diagnosticMessages(this.locale)
+    if (this.interception === undefined) throw new Error(messages.pluginPackagesRuntimeResolutionIsNotInstalled)
     this.interception.replace(successor)
     this.current = successor
     this.packages = new Map()
     this.disposeWorkerResolution?.()
-    this.disposeWorkerResolution = registerWorkerResolution(successor)
+    this.disposeWorkerResolution = registerWorkerResolution(successor, this.locale)
   }
 
   /**
@@ -99,10 +104,11 @@ export class PluginPackages extends Service {
    * reading the latest files fails, or the successor is rejected. A computed resolution without a profile can refresh.
    */
   async refresh(): Promise<void> {
+    const messages = diagnosticMessages(this.locale)
     if (!(this.current instanceof ProfileRuntimeResolution)) {
-      throw new Error('plugin-packages: the installed runtime resolution cannot be recomputed')
+      throw new Error(messages.pluginPackagesTheInstalledRuntimeResolutionCannotBeRecomputed)
     }
-    this.replace(await this.current.computeLatestResolution())
+    this.replace(await this.current.computeLatestResolution(this.locale))
   }
 
   /**
@@ -130,7 +136,7 @@ export class PluginPackages extends Service {
    * @returns local display metadata or its diagnostic; undefined for non-package requests or absent metadata.
    */
   metaOf(specifier: string, parentURL: string): PluginLocalizedMeta | undefined {
-    return readPluginMeta(specifier, parentURL)
+    return readPluginMeta(specifier, parentURL, this.locale)
   }
 }
 

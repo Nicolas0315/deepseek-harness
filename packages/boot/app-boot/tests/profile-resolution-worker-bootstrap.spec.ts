@@ -6,6 +6,7 @@ import type { RuntimeResolution } from '../src/profile.ts'
 const harness = vi.hoisted(() => ({
   data: undefined as {
     resolution: RuntimeResolution
+    locale: 'en' | 'ja'
   } | undefined,
   install: vi.fn(),
 }))
@@ -37,7 +38,7 @@ it('installs the inherited resolution', async () => {
     linkedRoots: [],
     entries: [],
   }
-  harness.data = { resolution }
+  harness.data = { resolution, locale: 'ja' }
   await import('../src/profile-resolution/worker-bootstrap.ts')
-  expect(harness.install).toHaveBeenCalledWith(resolution)
+  expect(harness.install).toHaveBeenCalledWith(resolution, 'ja')
 })

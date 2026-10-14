@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to add ranked SQLite FTS5 search across session history, either across sessions or within one session, with cursor pagination. It indexes live and persisted history in a separate derived database, so searches reflect current state without modifying the session-persistence store. Exact reads, filters, and traces remain available through the same query API. Search is opt-in in shipped compositions; configure `openAt` to open the index at startup, on first search, or never. Results match tokens and phrases rather than arbitrary substrings, and each index path has a single process owner.
+Use this package to add ranked SQLite FTS5 search across session history, either across sessions or within one session, with cursor pagination. It indexes live and persisted history in a separate derived database, so searches reflect current state without modifying the session-persistence store. Exact reads, filters, and traces remain available through the same query API. Search is opt-in in shipped compositions; configure `openAt` to open the index at startup, on first search, or never. Results match Latin tokens and phrases, plus character phrases within Japanese text, and each index path has a single process owner.
 
 ## Table of Contents
 
@@ -58,9 +58,9 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 `searchSessions` searches the whole corpus and groups results by each session's strongest matching event; `searchEvents` searches one logical session. Queries are literal phrases: they are trimmed and whitespace-normalized, and FTS5 syntax such as quotes, `OR`, `NEAR`, and `*` is treated as data, never as executable query syntax. Metadata filters (session id, cwd, created-at, parent, availability, event seq/time/type/surface) narrow results before ranking. All `current`, `shadowed`, and `log-only` events are searchable by default; pass a surface filter to narrow.
 
-Ranking is deterministic: more actual FTS5 highlighted-match spans first, then shorter documents, with event time, session id, and seq breaking ties. Results carry plain-text snippets bounded by `snippetChars` Unicode code points, with no provider-specific numeric score. Pages continue through an opaque `SessionSearchCursor` bound to the exact normalized request; a cursor becomes stale when its relevant corpus changes (`SESSION_QUERY_STALE_CURSOR`), and a within-session cursor survives changes to unrelated sessions while a cross-session cursor does not.
+Ranking is deterministic: more actual FTS5 highlighted-match spans first (the larger count from the original and Japanese indexes, without double-counting), then shorter documents, with event time, session id, and seq breaking ties. Results carry plain-text snippets bounded by `snippetChars` Unicode code points, with no provider-specific numeric score. Pages continue through an opaque `SessionSearchCursor` bound to the exact normalized request; a cursor becomes stale when its relevant corpus changes (`SESSION_QUERY_STALE_CURSOR`), and a within-session cursor survives changes to unrelated sessions while a cross-session cursor does not.
 
-The `unicode61` tokenizer matches tokens and phrases, not arbitrary substrings: `AI` does not match the token `BRAID`. Use `ctx.sessionQuery.filterEvents()` with a `text` clause when a literal whitespace-flexible substring scan is required.
+Japanese text additionally supports character phrases within unspaced sentences: `日本語` finds `これは日本語の文章です`, and one- and two-character searches work. An auxiliary `unicode61` column separates Japanese characters and applies NFKC normalization per grapheme, so halfwidth kana and decomposed dakuten match their normalized spellings. Fullwidth-only Latin and numeric messages also match their normalized spellings. Ideographic variation selectors do not prevent base-character matches. Latin and numeric runs remain whole, including mixed text such as `APIを使う`; `AI` still does not match `BRAID`. This is character recall, without reading conversion or hiragana/katakana transliteration. Snippets retain the original spelling, code points, and punctuation; projected separators never appear in results. Use `ctx.sessionQuery.filterEvents()` with a `text` clause for literal whitespace-flexible substring scans beyond these indexed matches.
 
 ### When to defer or disable search
 
@@ -87,9 +87,9 @@ The backend is built on one separation and three commitments:
 - **Derived index, never the source store.** The FTS rows live in a dedicated disposable database; the session-persistence database is never opened here.
 - **Live-preferred observation.** One serialized state machine compares persistence snapshot revisions, reads only new or changed logs through short-lived read handles, and reconciles in one transaction, so a search reflects the newest stable state.
 - **Generation-bound cursors.** Every corpus change bumps a generation; cursors carry the generation they were created under and fail stale rather than returning a shifted page.
-- **Literal phrases as data.** Caller query text is quoted into one FTS5 phrase so query syntax stays inert, and reserved highlight markers are stripped from documents before indexing.
+- **Literal phrases as data.** Original and projected caller text are quoted as column-scoped FTS5 phrases so query syntax stays inert, and reserved highlight markers are stripped from documents before indexing.
 
-The design history lives in the [SQLite FTS5 session search note](../../../.agents/notes/archived/feature/2026-07-10-sqlite-session-query-provider.md) and the [unified service decision](../../../.agents/notes/archived/architecture/2026-07-23-unified-session-query-service.md).
+The Japanese indexing rationale lives in the [Japanese session search note](../../../.agents/notes/implemented/feature/2026-10-14-japanese-session-search.md). The earlier design history lives in the [SQLite FTS5 session search note](../../../.agents/notes/archived/feature/2026-07-10-sqlite-session-query-provider.md) and the [unified service decision](../../../.agents/notes/archived/architecture/2026-07-23-unified-session-query-service.md).
 
 ### Source map
 
@@ -97,6 +97,7 @@ The design history lives in the [SQLite FTS5 session search note](../../../.agen
 |---|---|
 | [`src/index.ts`](src/index.ts) | Service: config, openAt lifecycle, serialized reconciliation, query execution, cursors |
 | [`src/query.ts`](src/query.ts) | Request normalization, parameterized predicates, snippets, predicate and binding budgets |
+| [`src/japanese-search.ts`](src/japanese-search.ts) | Japanese character projection and mapping snippet positions to original code points |
 | [`src/schema.ts`](src/schema.ts) | Database schema, application-id ownership, in-place reset, owner-only file creation |
 
 ### Index lifecycle
@@ -105,7 +106,7 @@ Persisted FTS rows live in a dedicated derived database and survive restarts; li
 
 ### Schema ownership
 
-The database carries an application id and schema version 8. Opening refuses a file owned by another application or a canonical database, rejects unknown user tables, and only a recognized incompatible derived schema resets in place — so an unrelated or session-persistence database is never touched. On POSIX filesystems, missing directories and database files are created owner-only (`0700` and `0600` before the process umask). Exactly one service in one process owns a derived-index path; generations and TEMP shadow state are connection-owned.
+The database carries an application id and schema version 9. Opening refuses a file owned by another application or a canonical database, rejects unknown user tables, and only a recognized incompatible derived schema resets in place — so an unrelated or session-persistence database is never touched. On POSIX filesystems, missing directories and database files are created owner-only (`0700` and `0600` before the process umask). Exactly one service in one process owns a derived-index path; generations and TEMP shadow state are connection-owned.
 
 </details>
 
@@ -142,7 +143,7 @@ These limits define when this package is a poor fit or needs special operational
 
 - **No caller authorization** — this is a trusted context-wide service; a model tool or UI must enforce its own access policy.
 - **Synchronous query execution** — `DatabaseSync` blocks the JavaScript thread during MATCH execution and cannot interrupt a statement already running.
-- **Token recall, not arbitrary substrings** — the `unicode61` tokenizer does not match substrings inside a larger token; use `filterEvents()` for literal scans.
+- **Latin token recall** — Latin and numeric runs remain whole tokens; use `filterEvents()` for arbitrary literal substrings. Japanese projection adds index storage only to documents containing Japanese characters.
 - **Single-owner derived index** — one service in one process must own each index path; external writers and multi-process sharing are unsupported.
 
 <a id="dev-note"></a>
@@ -155,6 +156,6 @@ This Dev Note is working context for maintainers: open design questions and dire
 
 #### Future: alternate tokenizers and search providers
 
-The `unicode61` tokenizer choice trades substring recall for index size and two-character token support; the trigram alternative was measured and rejected. Switching tokenizers or adding another search backend would change indexed recall and require its own reconciliation and generation story.
+The original `unicode61` column retains Latin token semantics; the auxiliary Japanese column supplies short character-phrase recall. A blanket trigram tokenizer would lose one- and two-character queries and change Latin recall. Switching tokenizers or adding another search backend would change indexed recall and require its own reconciliation and generation story.
 
 </details>

@@ -23,6 +23,8 @@ The SDK stdio application as a `dsh` profile bundle over [`dsh-base`](../base/RE
 <a id="use-this-package"></a>
 ## Use this package
 
+This profile’s startup help uses the [command-line diagnostic language](../../boot/cmdline/README.md#parsing-your-flags); the SDK JSON-RPC protocol is unchanged.
+
 The startup provider binds stdin EOF to the launcher's bounded successful shutdown. SDK protocol `shutdown`, SIGINT, and SIGTERM retain their owning server or launcher paths; disposal drains the root profile tree and persistence. Stdout is reserved for newline-delimited JSON-RPC frames. The bundle disables model-generated session titles because the SDK exposes no title surface; deterministic fallback titles remain durable without an auxiliary model request. The inherited projection cache checkpoints SDK-created sessions for later consumers; its durability barrier flushes each covered log prefix before publishing the cache row and may split otherwise coalesced JSONL runs. A deployment selects a different complete composition through profile bundles and patch files, not another app bin.
 
 | Config | Default | Behavior |

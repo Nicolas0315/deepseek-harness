@@ -36,7 +36,8 @@
   "dependencies": {
     "@deepseek-ai/dsh-acp": "workspace:*",
     "@deepseek-ai/dsh-cmdline": "workspace:*",
-    "commander": "^15.0.0"
+    "commander": "^15.0.0",
+    "@deepseek-ai/dsh-diagnostic-locale": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~"

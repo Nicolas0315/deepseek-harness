@@ -82,3 +82,9 @@ it('updates the last matching named override and leaves mismatched names untouch
   expect(await writePluginEnabled(file, 'tool', 'package', false)).toBe(true)
   expect(loadOptionalPatches('test', file)).toHaveLength(3)
 })
+
+it('uses the caller language for a non-sequence profile patch', async () => {
+  const file = await fixture('{}\n')
+  await expect(writePluginEnabled(file, 'tool', 'package', false, 'ja')).rejects.toThrow('プロファイルのパッチは YAML のシーケンスにしてください')
+  expect(await readFile(file, 'utf8')).toBe('{}\n')
+})

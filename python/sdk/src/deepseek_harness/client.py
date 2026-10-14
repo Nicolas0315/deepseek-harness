@@ -10,10 +10,11 @@ import uuid
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, TypeAlias, TypeVar
+from typing import Callable, Literal, TypeAlias, TypeVar
 
 from pydantic import BaseModel
 
+from ._messages import message as diagnostic, resolve_language
 from .errors import JsonRpcError, TransportClosedError
 from .models import IncomingRequest, InitializeResponse, JsonObject, JsonValue, Notification
 
@@ -23,7 +24,10 @@ NotificationFilter: TypeAlias = Callable[[Notification], bool]
 
 @dataclass(slots=True)
 class HarnessConfig:
-    """Configuration for launching the local DeepSeek Harness SDK runtime."""
+    """Launch options; language selects owned diagnostics and the child DSH_LANG.
+
+    An omitted language follows the effective child environment, then system locale.
+    """
 
     dsh_bin: str | None = None
     profile: str = "sdk"
@@ -34,6 +38,7 @@ class HarnessConfig:
     initialize_timeout_seconds: float = 30.0
     request_timeout_seconds: float | None = None
     shutdown_timeout_seconds: float | None = 1.0
+    language: Literal["en", "ja"] | None = None
 
 
 class HarnessClient:
@@ -46,6 +51,9 @@ class HarnessClient:
         _launch_args: tuple[str, ...] | None = None,
     ) -> None:
         self.config = config or HarnessConfig()
+        self._env = {**os.environ, **(self.config.env or {})}
+        self.language = resolve_language(self._env, self.config.language)
+        self._env["DSH_LANG"] = self.language
         self._launch_args = _launch_args
         self._proc: subprocess.Popen[str] | None = None
         self._lock = threading.Lock()
@@ -73,9 +81,7 @@ class HarnessClient:
             return
         with self._lock:
             self._session_parents.clear()
-        env = os.environ.copy()
-        if self.config.env:
-            env.update(self.config.env)
+        env = self._env.copy()
         args = list(self._launch_args or self._default_launch_args(env))
         self._proc = subprocess.Popen(
             args,
@@ -101,12 +107,12 @@ class HarnessClient:
             self.request("shutdown", None, response_model=_ShutdownResponse, timeout_seconds=self.config.shutdown_timeout_seconds)
             shutdown_completed = True
         except Exception as exc:
-            self._stderr_lines.append(f"shutdown request failed: {exc}")
+            self._stderr_lines.append(diagnostic("shutdown_failed", self.language, error=exc))
         if proc.stdin:
             try:
                 proc.stdin.close()
             except Exception as exc:
-                self._stderr_lines.append(f"stdin close failed: {exc}")
+                self._stderr_lines.append(diagnostic("stdin_close_failed", self.language, error=exc))
         if shutdown_completed:
             try:
                 proc.wait(timeout=self.config.shutdown_timeout_seconds)
@@ -124,7 +130,7 @@ class HarnessClient:
                 proc.kill()
                 proc.wait()
         self._proc = None
-        self._fail_waiters(self._runtime_closed_error("DeepSeek Harness runtime closed"))
+        self._fail_waiters(self._runtime_closed_error(diagnostic("runtime_closed", self.language)))
         if self._reader_thread and self._reader_thread.is_alive():
             self._reader_thread.join(timeout=0.5)
         if self._stderr_thread and self._stderr_thread.is_alive():
@@ -157,7 +163,7 @@ class HarnessClient:
             )
         except TimeoutError as error:
             self.close()
-            raise TimeoutError(f"{error}\nselected dsh profile {self.config.profile!r}") from error
+            raise TimeoutError(f"{error}\n" + diagnostic("selected_profile", self.language, profile=self.config.profile)) from error
         except BaseException as error:
             self.close()
             diagnostics = self._runtime_diagnostics()
@@ -226,7 +232,7 @@ class HarnessClient:
             notification_subscription=notification_subscription,
         )
         if not isinstance(result, dict):
-            raise TypeError(f"{method} response must be a JSON object")
+            raise TypeError(diagnostic("response_object", self.language, method=method))
         return response_model.model_validate(result)
 
     def notify(self, method: str, params: JsonObject | None = None) -> None:
@@ -324,7 +330,7 @@ class HarnessClient:
                         diagnostics = self._runtime_diagnostics()
                         suffix = f"\n{diagnostics}" if diagnostics else ""
                         raise TimeoutError(
-                            f"{method} timed out waiting for DeepSeek Harness runtime{suffix}"
+                            diagnostic("request_timeout", self.language, method=method, suffix=suffix)
                         )
                     wait_timeout = remaining if wait_timeout is None else min(wait_timeout, remaining)
                 try:
@@ -350,14 +356,14 @@ class HarnessClient:
     def _write_message(self, message: JsonObject) -> None:
         proc = self._proc
         if proc is None or proc.stdin is None:
-            raise TransportClosedError("DeepSeek Harness runtime is not running")
+            raise TransportClosedError(diagnostic("not_running", self.language))
         try:
             payload = json.dumps(message, separators=(",", ":")) + "\n"
             with self._write_lock:
                 proc.stdin.write(payload)
                 proc.stdin.flush()
         except Exception as exc:
-            raise self._runtime_closed_error("Failed to write to DeepSeek Harness runtime") from exc
+            raise self._runtime_closed_error(diagnostic("write_failed", self.language)) from exc
 
     def _start_reader_thread(self) -> None:
         self._reader_thread = threading.Thread(target=self._reader_loop, name="dsh-runtime-reader", daemon=True)
@@ -383,7 +389,7 @@ class HarnessClient:
         except BaseException as exc:
             self._fail_waiters(exc)
         finally:
-            self._fail_waiters(self._runtime_closed_error("DeepSeek Harness runtime stdout closed"))
+            self._fail_waiters(self._runtime_closed_error(diagnostic("stdout_closed", self.language)))
 
     def _stderr_loop(self) -> None:
         proc = self._proc
@@ -408,7 +414,7 @@ class HarnessClient:
                 return
             if isinstance(message.get("error"), dict):
                 err = message["error"]
-                waiter.put(JsonRpcError(_int_or_none(err.get("code")), str(err.get("message", "JSON-RPC error")), err.get("data")))
+                waiter.put(JsonRpcError(_int_or_none(err.get("code")), str(err.get("message", diagnostic("rpc_error", self.language))), err.get("data")))
             else:
                 waiter.put(message.get("result"))
             return
@@ -468,9 +474,9 @@ class HarnessClient:
         if proc is not None:
             exit_code = proc.poll()
             if exit_code is not None:
-                parts.append(f"exit code: {exit_code}")
+                parts.append(diagnostic("exit_code", self.language, code=exit_code))
         if self._stderr_lines:
-            parts.append("stderr tail:\n" + "\n".join(self._stderr_lines))
+            parts.append(diagnostic("stderr_tail", self.language) + "\n".join(self._stderr_lines))
         return "\n".join(parts)
 
     def _default_launch_args(self, env: dict[str, str]) -> tuple[str, ...]:
@@ -479,21 +485,19 @@ class HarnessClient:
                 from deepseek_harness_runtime import resolve_bundled_launch_args
             except ImportError as exc:
                 raise FileNotFoundError(
-                    "Unable to locate the bundled DeepSeek Harness dsh runtime. "
-                    "Install deepseek-harness-runtime-bin."
+                    diagnostic("runtime_missing", self.language)
                 ) from exc
-            base = resolve_bundled_launch_args()
+            base = resolve_bundled_launch_args(language=self.language, env=env)
         else:
             base = (str(Path(self.config.dsh_bin).expanduser().resolve()),)
 
         if self.config.dsh_home is not None:
             if not self.config.dsh_home.strip():
-                raise ValueError("HarnessConfig requires a non-empty dsh_home")
+                raise ValueError(diagnostic("home_empty", self.language))
             env["DSH_HOME"] = str(Path(self.config.dsh_home).expanduser().resolve())
         elif not env.get("DSH_HOME", "").strip():
             raise ValueError(
-                "HarnessConfig requires an explicit dsh_home or non-empty DSH_HOME; "
-                "the Python SDK never uses ~/.dsh implicitly"
+                diagnostic("home_required", self.language)
             )
 
         patches = tuple(

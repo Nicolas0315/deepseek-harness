@@ -6,6 +6,8 @@
  * @module @deepseek-ai/dsh-app-boot
  */
 
+import { diagnosticMessages, defaultDiagnosticLocale, resolveBootLocale } from './diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import { pathToFileURL } from 'node:url'
 import { readFileSync } from 'node:fs'
 import { inspect, parseEnv } from 'node:util'
@@ -120,11 +122,12 @@ export function loadEnv(
   binName: string, dir: string = process.cwd(),
   warn: (line: string) => void = line => void process.stderr.write(line),
 ): void {
+  const messages = diagnosticMessages()
   try {
     process.loadEnvFile(resolve(dir, '.env'))
   } catch (error) {
     if ((error as NodeJS.ErrnoException | null)?.code !== 'ENOENT') {
-      warn(`${binName}: failed to load .env: ${String(error)}\n`)
+      warn(messages.envLoadFailed(binName, String(error)))
     }
     // ENOENT (no .env) is fine — rely on the ambient environment.
   }
@@ -191,6 +194,7 @@ function isBootstrapOnly(name: string): boolean {
 function readEnvLayer(
   binName: string, dir: string, warn: (line: string) => void, home: string,
 ): { path: string; values: Record<string, string> } | undefined {
+  const messages = diagnosticMessages()
   const path = resolve(dir, '.env')
   const isHome = resolve(dir) === home
   let content: string
@@ -198,7 +202,7 @@ function readEnvLayer(
     content = readFileSync(path, 'utf8')
   } catch (error) {
     if ((error as NodeJS.ErrnoException | null)?.code !== 'ENOENT') {
-      warn(`${binName}: failed to load .env: ${String(error)}\n`)
+      warn(messages.envLoadFailed(binName, String(error)))
     }
     // ENOENT (no .env) is fine — rely on the ambient environment.
     return undefined
@@ -211,12 +215,10 @@ function readEnvLayer(
     if (isHome && proxyName) continue
     // A proxy name has a second way out that the other bootstrap names do not, so its message says so.
     const remedy = proxyName
-      ? `export ${name}, or put it in ${resolve(home, '.env')}, which does not travel with a repository`
-      : `export ${name} instead of putting it in a .env file`
+      ? messages.proxyEnvRemedy(name, resolve(home, '.env'))
+      : messages.envRemedy(name)
     throw new Error(
-      `${binName}: ${path} sets "${name}", which only the launching environment may set`
-      + ' (it decides how this process starts, where its code and instructions load from, or how it'
-      + ` reaches the network); ${remedy}`,
+      messages.setsWhichOnlyTheLaunchingEnvironmentMaySetIt(binName, path, name, remedy),
     )
   }
   return { path, values }
@@ -270,15 +272,19 @@ const userPatchesSchema = entryListSchema
  * @param patches Complete ordered patch list.
  * @param binName Diagnostic prefix.
  * @param requiredIds Explicit enablement targets whose existing failures also reject reconciliation.
+ * @param locale - diagnostic language captured for this operation.
  * @returns Diagnostics for unchanged pre-existing inactive entries; new or changed failures reject.
  */
 export async function reconcileProfilePatches(
   ctx: Context, patches: PatchOptions[], binName: string, requiredIds: readonly string[] = [],
+  locale: DiagnosticLocale = resolveBootLocale(ctx),
 ): Promise<string[]> {
+  const messages = diagnosticMessages(locale)
   const entry = bootstrapIncludes.get(ctx)
-  if (entry === undefined) throw new Error(`${binName}: profile reload requires the root Include entry`)
-  const previousFailures = (await inactiveEntries(ctx)).map(failure => ({
-    ...failure, diagnostic: inactiveDiagnostic(failure), fiber: failure.entry.fiber, options: JSON.stringify(failure.entry.options),
+  if (entry === undefined) throw new Error(messages.profileReloadRequiresTheRootIncludeEntry(binName))
+  const previousFailures = (await inactiveEntries(ctx, messages)).map(failure => ({
+    ...failure, diagnostic: inactiveDiagnostic(failure, messages),
+    fiber: failure.entry.fiber, options: JSON.stringify(failure.entry.options),
   }))
   // Removed entries leave the Loader store before their async disposers finish.
   const previousFibers = [...ctx.loader.entries()].flatMap(row => row.fiber === undefined ? [] : [{
@@ -287,20 +293,20 @@ export async function reconcileProfilePatches(
   const { patches: _previous, ...includeConfig } = entry.options.config as Include.Config
   // The recomposition judges the rows the launch judged, resolved from the file this Include read.
   const parentURL = new URL('.', new URL(includeConfig.path, entry.parent.tree.ctx.baseUrl)).href
-  const prepared = prepareProfilePatches(ctx, patches, parentURL, binName)
+  const prepared = prepareProfilePatches(ctx, patches, parentURL, binName, locale)
   await entry.update({ config: { ...includeConfig, patches: prepared } })
   const results = await Promise.allSettled(previousFibers.map(({ fiber }) => fiber.await()))
   await ctx.loader.await()
-  const failures = await inactiveEntries(ctx)
+  const failures = await inactiveEntries(ctx, messages)
   const introduced = failures.filter(failure => requiredIds.includes(failure.entry.options.id) || !previousFailures.some(previous =>
     previous.entry === failure.entry && previous.fiber === failure.entry.fiber
-    && previous.options === JSON.stringify(failure.entry.options) && previous.diagnostic === inactiveDiagnostic(failure)))
-  if (introduced.length > 0) throw new Error(activationDiagnostic(binName, introduced).trimEnd())
+    && previous.options === JSON.stringify(failure.entry.options) && previous.diagnostic === inactiveDiagnostic(failure, messages)))
+  if (introduced.length > 0) throw new Error(activationDiagnostic(binName, introduced, messages).trimEnd())
   for (const [index, result] of results.entries()) {
     if (result.status === 'rejected' && !previousFibers[index]?.failed) throw result.reason
   }
   ctx.emit('app-boot/config-reload')
-  return failures.map(inactiveDiagnostic)
+  return failures.map(failure => inactiveDiagnostic(failure, messages))
 }
 
 /**
@@ -312,17 +318,23 @@ export async function reconcileProfilePatches(
  * loud at boot, never be silently skipped.
  * @param binName - the diagnostic prefix on the thrown error.
  * @param file - absolute path of the patch file.
+ * @param locale - diagnostic language captured for this operation.
  * @returns the parsed patches, or `undefined` when the file does not exist.
  */
-export function loadOptionalPatches(binName: string, file: string): PatchOptions[] | undefined {
+export function loadOptionalPatches(
+  binName: string,
+  file: string,
+  locale: DiagnosticLocale = defaultDiagnosticLocale(),
+): PatchOptions[] | undefined {
+  const messages = diagnosticMessages(locale)
   let content: string
   try {
     content = readFileSync(file, 'utf8')
   } catch (error) {
     if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') return undefined
-    throw new Error(`${binName}: failed to read patches ${file}: ${String(error)}`)
+    throw new Error(messages.failedToReadPatches(binName, file, String(error)))
   }
-  return parsePatchList(binName, file, content, 'patches')
+  return parsePatchList(binName, file, content, 'patches', locale)
 }
 
 /**
@@ -332,16 +344,18 @@ export function loadOptionalPatches(binName: string, file: string): PatchOptions
  * is a misconfiguration, not "no overlay".
  * @param binName - the diagnostic prefix on the thrown error.
  * @param file - absolute path of the overlay file.
+ * @param locale - diagnostic language captured for this operation.
  * @returns the parsed patch list.
  */
-export function loadOverlayPatches(binName: string, file: string): PatchOptions[] {
+export function loadOverlayPatches(binName: string, file: string, locale: DiagnosticLocale = defaultDiagnosticLocale()): PatchOptions[] {
+  const messages = diagnosticMessages(locale)
   let content: string
   try {
     content = readFileSync(file, 'utf8')
   } catch (error) {
-    throw new Error(`${binName}: failed to read overlay ${file}: ${String(error)}`)
+    throw new Error(messages.failedToReadOverlay(binName, file, String(error)))
   }
-  return parsePatchList(binName, file, content, 'overlay')
+  return parsePatchList(binName, file, content, 'overlay', locale)
 }
 
 /** Convert inserted filesystem paths to file URLs, anchoring relative paths beside the patch; keep assertion names literal. */
@@ -371,19 +385,21 @@ function anchorInsertedPluginNames(patches: PatchOptions[], file: string): Patch
  */
 function parsePatchList(
   binName: string, file: string, content: string, label: string,
+  locale: DiagnosticLocale = defaultDiagnosticLocale(),
 ): PatchOptions[] {
+  const messages = diagnosticMessages(locale)
   let parsed: unknown
   try {
     parsed = yaml.load(content, { schema: userPatchesSchema })
   } catch (error) {
-    throw new Error(`${binName}: failed to parse ${label} ${file}: ${String(error)}`)
+    throw new Error(messages.failedToParse(binName, label, file, String(error)))
   }
   if (!Array.isArray(parsed)) {
-    throw new Error(`${binName}: ${label} ${file} must be a top-level YAML array of loader patch entries`)
+    throw new Error(messages.mustBeATopLevelYAMLArrayOfLoader(binName, label, file))
   }
   parsed.forEach((entry, index) => {
     if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
-      throw new Error(`${binName}: ${label} entry ${index + 1} in ${file} must be a mapping (a loader patch entry)`)
+      throw new Error(messages.entryInMustBeAMappingALoaderPatch(binName, label, String(index + 1), file))
     }
   })
   return anchorInsertedPluginNames(parsed as PatchOptions[], file)
@@ -435,20 +451,21 @@ export function renderConfigDump(
   layers: ConfigDumpLayer[],
   warn: (line: string) => void = line => void process.stderr.write(`${line}\n`),
 ): string {
+  const messages = diagnosticMessages()
   let content: string
   try {
     content = readFileSync(absoluteConfigPath, 'utf8')
   } catch (error) {
-    throw new Error(`${binName}: failed to read config ${absoluteConfigPath}: ${String(error)}`)
+    throw new Error(messages.failedToReadConfig(binName, absoluteConfigPath, String(error)))
   }
   let parsed: unknown
   try {
     parsed = yaml.load(content, { schema: entryListSchema })
   } catch (error) {
-    throw new Error(`${binName}: failed to parse config ${absoluteConfigPath}: ${String(error)}`)
+    throw new Error(messages.failedToParseConfig(binName, absoluteConfigPath, String(error)))
   }
   if (!Array.isArray(parsed)) {
-    throw new Error(`${binName}: config ${absoluteConfigPath} must be a top-level YAML array of entries`)
+    throw new Error(messages.configMustBeATopLevelYAMLArrayOf(binName, absoluteConfigPath))
   }
   const baseLabel = basename(absoluteConfigPath)
   // YAML parsing yields untyped rows; the include validates each entry
@@ -499,6 +516,7 @@ function groupedDump(
   composed: readonly unknown[],
   entryOrigins: readonly { origin: string; patchedBy: string[] }[],
 ): string {
+  const messages = diagnosticMessages()
   const lines: string[] = []
   let currentLabel: string | undefined
   let group: unknown[] = []
@@ -514,7 +532,7 @@ function groupedDump(
     if (record === undefined) continue
     const label = record.patchedBy.length === 0
       ? record.origin
-      : `${record.origin}, patched by ${record.patchedBy.join(', ')}`
+      : messages.patchedBy(record.origin, record.patchedBy.join(', '))
     if (label !== currentLabel) {
       flush()
       currentLabel = label
@@ -683,6 +701,7 @@ export function installFailLoud(
   proc: FailLoudProcess = process,
   release?: () => Promise<void> | void,
 ): () => void {
+  const messages = diagnosticMessages()
   let exiting = false
   const report = (err: unknown, label: string): void => {
     // A release in flight already owns the exit. Swallow later failures
@@ -717,9 +736,9 @@ export function installFailLoud(
   const onRejection = (err: unknown): void => {
     if (assembledActivationRejections.has(err)) return
     // Label kept stable: the Web profile expected-output e2e tests match it.
-    report(err, 'fatal load failure')
+    report(err, messages.fatalLoad)
   }
-  const onException = (err: unknown): void => { report(err, 'fatal uncaught exception') }
+  const onException = (err: unknown): void => { report(err, messages.fatalException) }
   const uninstall = (): void => {
     proc.off('unhandledRejection', onRejection)
     proc.off('uncaughtException', onException)
@@ -808,10 +827,13 @@ export class StartupError extends Error {
   /**
    * @param message - concise terminal diagnostic.
    * @param entries - inactive plugin metadata and original failure values.
+   * @param locale - language of the aggregate failure explanation.
    */
-  constructor(message: string, readonly entries: readonly StartupEntryDiagnostic[]) {
+  constructor(message: string, readonly entries: readonly StartupEntryDiagnostic[], locale: DiagnosticLocale = defaultDiagnosticLocale()) {
     const failures = entries.flatMap(({ outcome }) => outcome.kind === 'failed' ? [outcome.error] : [])
-    super(message, failures.length > 0 ? { cause: new AggregateError(failures, 'Plugin activation failures') } : undefined)
+    super(message, failures.length > 0
+      ? { cause: new AggregateError(failures, diagnosticMessages(locale).pluginActivationFailures) }
+      : undefined)
     Object.defineProperties(this, {
       entries: { enumerable: false },
       startup: { enumerable: false },
@@ -824,19 +846,19 @@ export class StartupError extends Error {
  * fibers are awaited to recover their recorded rejection reason and coalesce
  * duplicate Loader notifications through the next process rejection checkpoint.
  */
-async function inactiveEntries(ctx: Context): Promise<InactiveEntry[]> {
+async function inactiveEntries(ctx: Context, messages = diagnosticMessages(resolveBootLocale(ctx))): Promise<InactiveEntry[]> {
   const failures: InactiveEntry[] = []
   const rejectionReasons: unknown[] = []
   for (const entry of ctx.loader.entries()) {
     try {
       if (entry.disabled) continue
     } catch (error) {
-      failures.push({ entry, outcome: { kind: 'failed', error, phase: 'disabled expression failed' } })
+      failures.push({ entry, outcome: { kind: 'failed', error, phase: messages.disabledExpressionFailed } })
       continue
     }
     const fiber = entry.fiber
     if (fiber === undefined) {
-      failures.push({ entry, outcome: { kind: 'failed', error: 'failed to import' } })
+      failures.push({ entry, outcome: { kind: 'failed', error: messages.failedImport } })
       continue
     }
     const state = fiber.state
@@ -857,7 +879,7 @@ async function inactiveEntries(ctx: Context): Promise<InactiveEntry[]> {
         outcome: { kind: 'pending', missing },
       })
     } else {
-      failures.push({ entry, outcome: { kind: 'failed', error: `fiber state ${String(state)}` } })
+      failures.push({ entry, outcome: { kind: 'failed', error: messages.fiberState(String(state)) } })
     }
   }
   if (rejectionReasons.length > 0) await observeLoaderRejectionCheckpoint(rejectionReasons)
@@ -873,37 +895,39 @@ function failureDetail(outcome: Extract<InactiveEntry['outcome'], { kind: 'faile
 function activationDiagnostic(
   binName: string,
   failures: readonly InactiveEntry[],
+  messages = diagnosticMessages(),
 ): string {
-  const noun = failures.length === 1 ? 'entry' : 'entries'
-  return `${binName}: warning: ${String(failures.length)} ${noun} did not activate\n${failures.map(inactiveDiagnostic).join('\n')}\n`
+  return messages.optionalActivation(binName, failures.length, failures.map(failure => inactiveDiagnostic(failure, messages)).join('\n'))
 }
 
 /** Stable per-entry text for reload comparisons and optional warnings. */
-function inactiveDiagnostic({ entry, outcome }: InactiveEntry): string {
+function inactiveDiagnostic({ entry, outcome }: InactiveEntry, messages = diagnosticMessages()): string {
   const detail = outcome.kind === 'failed' ? failureDetail(outcome)
-    : `pending (waiting for ${outcome.missing.length === 1 ? 'service' : 'services'}: ${outcome.missing.join(', ') || 'unknown'})`
+    : messages.pendingServices(outcome.missing.length, outcome.missing.join(', ') || messages.unknown)
   return `${entry.options.id} (${entry.options.name}): ${detail}`
 }
 
 /** Group startup failures and pending services, marking every required entry. */
-function startupDiagnostic(binName: string, failures: readonly InactiveEntry[], required: ReadonlySet<Entry>): string {
-  const lines = [`${binName}: startup failed: ${String(required.size)} required ${required.size === 1 ? 'plugin' : 'plugins'} did not activate`]
+function startupDiagnostic(
+  binName: string, failures: readonly InactiveEntry[], required: ReadonlySet<Entry>, messages = diagnosticMessages(),
+): string {
+  const lines = [messages.startupFailed(binName, required.size)]
   const failed = failures.flatMap(({ entry, outcome }) => outcome.kind === 'failed' ? [{ entry, outcome }] : [])
   const pending = failures.flatMap(({ entry, outcome }) => outcome.kind === 'pending' ? [{ entry, outcome }] : [])
   pending.sort((left, right) => Number(required.has(right.entry)) - Number(required.has(left.entry)))
-  const label = (entry: Entry): string => `${entry.options.id}${required.has(entry) ? ' (required)' : ''}`
+  const label = (entry: Entry): string => `${entry.options.id}${required.has(entry) ? messages.required : ''}`
   if (failed.length > 0) {
-    lines.push('', `Failed plugins (${String(failed.length)}):`)
+    lines.push('', messages.failedPlugins(failed.length))
     for (const { entry, outcome } of failed) {
-      lines.push(`  ${label(entry)}`, `    Package: ${entry.options.name}`)
+      lines.push(`  ${label(entry)}`, `    ${messages.packageLabel} ${entry.options.name}`)
       lines.push(...failureDetail(outcome).split('\n').map(line => `    ${line}`))
     }
   }
   if (pending.length > 0) {
-    const width = Math.max('Plugin'.length, ...pending.map(({ entry }) => label(entry).length)) + 2
-    lines.push('', `Plugins waiting for services (${String(pending.length)}):`, `  ${'Plugin'.padEnd(width)}Missing services`)
+    const width = Math.max(messages.pluginLabel.length, ...pending.map(({ entry }) => label(entry).length)) + 2
+    lines.push('', messages.pendingPlugins(pending.length), `  ${messages.pluginLabel.padEnd(width)}${messages.missingServices}`)
     for (const { entry, outcome } of pending) {
-      lines.push(`  ${label(entry).padEnd(width)}${outcome.missing.join(', ') || 'unknown'}`)
+      lines.push(`  ${label(entry).padEnd(width)}${outcome.missing.join(', ') || messages.unknown}`)
     }
   }
   return lines.join('\n')
@@ -930,15 +954,17 @@ export async function auditStartupEntries(
   binName: string,
   warn: (line: string) => void = line => void process.stderr.write(line),
 ): Promise<void> {
-  const failures = await inactiveEntries(ctx)
+  const locale = resolveBootLocale(ctx)
+  const messages = diagnosticMessages(locale)
+  const failures = await inactiveEntries(ctx, messages)
   const required = new Set(failures.filter(({ entry }) => entry === bootstrapIncludes.get(ctx)
     || requiredStartupEntryIds.has(entry.options.id)).map(({ entry }) => entry))
   if (required.size > 0) {
-    throw new StartupError(startupDiagnostic(binName, failures, required), failures.map(({ entry, outcome }) => ({
+    throw new StartupError(startupDiagnostic(binName, failures, required, messages), failures.map(({ entry, outcome }) => ({
       id: entry.options.id, module: entry.options.name, required: required.has(entry), fiberState: entry.fiber?.state, outcome,
-    })))
+    })), locale)
   }
-  if (failures.length > 0) warn(activationDiagnostic(binName, failures))
+  if (failures.length > 0) warn(activationDiagnostic(binName, failures, messages))
 }
 
 /**
@@ -979,6 +1005,7 @@ export async function boot(
   prepare?: (ctx: Context) => Promise<void> | void,
   bareModuleBaseUrl?: string,
 ): Promise<Context> {
+  const messages = diagnosticMessages()
   const ctx = new Context()
   const startupLogs: StartupLogRecord[] = []
   // The collector must outlive root disposal to retain asynchronous cleanup errors.
@@ -992,7 +1019,7 @@ export async function boot(
   })
   // Two failure labels: `prepare` runs before any config-tree entry mounts,
   // so its failure is host setup, not the plugin tree.
-  let stage = 'host preparation failed'
+  let stage = messages.hostPreparationFailed
   try {
     ctx.baseUrl = pathToFileURL(dirname(absoluteConfigPath)).href + '/'
     ctx.provide('dshHomePath', dshHomePath)
@@ -1003,7 +1030,7 @@ export async function boot(
     }, { global: true, prepend: true })
     await ctx.plugin(Loader)
     await prepare?.(ctx)
-    stage = 'plugin tree failed to load'
+    stage = messages.pluginTreeFailed
     await mountRootInclude(ctx, absoluteConfigPath, patches, bareModuleBaseUrl, binName)
     // A surface can finish and dispose the whole tree while startup is still
     // in flight, before the last entry settles. The Loader service goes with

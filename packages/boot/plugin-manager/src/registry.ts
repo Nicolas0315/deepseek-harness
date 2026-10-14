@@ -7,6 +7,8 @@
  * @module @deepseek-ai/dsh-plugin-manager/registry
  */
 
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
+import { diagnosticCatalog } from './messages.ts'
 import type { ParsedInstallSpec } from './install-spec.ts'
 import type { PluginInstallFailureKind, PluginRegistries, Registry } from './types.ts'
 
@@ -22,15 +24,17 @@ export const REGISTRY_URL = /^https?:\/\/\S+$/
 /**
  * Parse a registry URL into the form pnpm compares registries in: lower-case host, trailing slash.
  * @param url - the registry as configured or requested.
+ * @param locale - explicit diagnostic language; defaults to English for browser callers.
  * @returns the normalized URL.
  * @throws {Error} for anything but an http(s) URL.
  */
-export function normalizeRegistry(url: string): string {
+export function normalizeRegistry(url: string, locale: DiagnosticLocale = 'en'): string {
+  const messages = diagnosticCatalog(locale)
   let parsed: URL | undefined
   try { parsed = new URL(url) }
   catch { /* named below: only an http(s) URL is a registry */ }
   if (parsed === undefined || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
-    throw new Error(`a registry must be an http(s) URL: ${url}`)
+    throw new Error(messages.aRegistryMustBeAnHttpSURL(url))
   }
   if (!parsed.pathname.endsWith('/')) parsed.pathname += '/'
   return parsed.href
@@ -49,26 +53,27 @@ export function normalizeRegistry(url: string): string {
  * configuration already names is asked once.
  * @param requested - the caller's registry; undefined defers to the configured first one.
  * @param configured - the configured first registry, the fallbacks after it, and what pnpm's own configuration names.
+ * @param locale - explicit diagnostic language for invalid URLs.
  * @returns the registries to ask, in order; never empty.
  */
-export function registryPlan(requested: Registry | undefined, configured: PluginRegistries): Registry[] {
-  const own = configured.resolved === null ? null : normalizeRegistry(configured.resolved)
-  const fallbacks = configured.fallbackRegistries.map(normalizeRegistry)
+export function registryPlan(requested: Registry | undefined, configured: PluginRegistries, locale: DiagnosticLocale = 'en'): Registry[] {
+  const own = configured.resolved === null ? null : normalizeRegistry(configured.resolved, locale)
+  const fallbacks = configured.fallbackRegistries.map(url => normalizeRegistry(url, locale))
   const ownIsPublic = own !== null && (own === OFFICIAL_NPM_REGISTRY || fallbacks.includes(own))
   // What a registry is compared as: pnpm's own registry stands for the URL it names, once that is known.
-  const keyOf = (registry: Registry): string | null => registry === null ? own : normalizeRegistry(registry)
+  const keyOf = (registry: Registry): string | null => registry === null ? own : normalizeRegistry(registry, locale)
   const known: Registry[] = []
   const keys: (string | null)[] = []
   for (const registry of [configured.registry, ...configured.fallbackRegistries]) {
     if (registry === null && !ownIsPublic) continue
     const key = keyOf(registry)
     if (keys.includes(key)) continue
-    known.push(registry === null ? null : normalizeRegistry(registry))
+    known.push(registry === null ? null : normalizeRegistry(registry, locale))
     keys.push(key)
   }
   const first = requested === undefined ? configured.registry : requested
   const firstKey = keyOf(first)
-  const normalizedFirst = first === null ? null : normalizeRegistry(first)
+  const normalizedFirst = first === null ? null : normalizeRegistry(first, locale)
   // A private or unknown registry of pnpm's own, whichever way it was asked for, is asked alone.
   if ((first === null || firstKey === own) && !ownIsPublic) return [normalizedFirst]
   if (!keys.includes(firstKey)) return [normalizedFirst]

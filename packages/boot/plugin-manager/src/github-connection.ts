@@ -1,4 +1,6 @@
 /** Bounded GitHub repository checks using the installer's Git configuration and environment. */
+import { diagnosticMessages } from './diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import { mkdir, mkdtemp, open } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -9,6 +11,8 @@ import type { PackageResult } from './types.ts'
 
 /** Deadline, diagnostics and cancellation for one read-only GitHub check. */
 export interface GithubConnectionOptions {
+  /** Captured operation language; omitted, resolves the inherited environment. */
+  diagnosticLocale?: DiagnosticLocale
   timeoutMs: number
   outputBytes: number
   signal: AbortSignal
@@ -28,6 +32,7 @@ export interface GithubConnectionOptions {
 export async function checkGithubConnection(
   spec: ParsedInstallSpec, dir: string, options: GithubConnectionOptions,
 ): Promise<PackageResult | undefined> {
+  const messages = diagnosticMessages(options.diagnosticLocale)
   if (spec.kind !== 'git') return undefined
   const host = spec.host.toLowerCase().replace(/:.*$/, '')
   if (host !== 'github.com' && !host.endsWith('.github.com')) return undefined
@@ -52,8 +57,8 @@ export async function checkGithubConnection(
       timeout: options.timeoutMs, cancelSignal: options.signal, killDescendants: true, killSignal: 'SIGKILL',
     })
     if (!result.failed) return undefined
-    if (result.timedOut) await log.write(`dsh: connection to ${spec.host} timed out after ${String(options.timeoutMs)}ms\n`)
-    if ((await log.stat()).size === 0) await log.write(result.shortMessage ?? 'GitHub connection check failed')
+    if (result.timedOut) await log.write(messages.connectionTimeout(spec.host, String(options.timeoutMs)))
+    if ((await log.stat()).size === 0) await log.write(result.shortMessage ?? messages.githubConnectionFailed)
     const { size } = await log.stat()
     const bytes = Buffer.alloc(Math.min(size, options.outputBytes))
     await log.read(bytes, 0, bytes.length, size - bytes.length)

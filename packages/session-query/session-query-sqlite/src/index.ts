@@ -37,6 +37,7 @@ import type {
   SessionSearchPage,
   SessionSearchRequest,
 } from '@deepseek-ai/dsh-session-query'
+import { japaneseSearchQuery, japaneseSearchText, markJapaneseMatch } from './japanese-search.ts'
 import {
   type JournalMode,
   openSearchDatabase,
@@ -186,6 +187,7 @@ interface SearchRow extends SessionHeaderRow {
   time: number
   surface: string
   marked_text: string
+  marked_japanese_text: string
   match_count: number
   document_length: number
 }
@@ -595,22 +597,7 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
       revision,
       generation,
     )
-    const insert = db.prepare(`
-      INSERT INTO persisted_docs (text, session_id, seq, type, time, surface, codepoint_length)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `)
-    for (const document of entry.documents) {
-      const text = sanitizeFtsText(document.text)
-      insert.run(
-        text,
-        document.sessionId,
-        document.seq,
-        document.type,
-        document.time,
-        document.surface,
-        Array.from(text).length,
-      )
-    }
+    this._insertDocuments('persisted_docs', entry.documents)
   }
 
   private _replaceLiveSession(entry: ObservedSession, generation: number, persisted: boolean): void {
@@ -626,14 +613,20 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
       persisted ? 1 : 0,
       generation,
     )
+    this._insertDocuments('temp.live_docs', entry.documents)
+  }
+
+  private _insertDocuments(table: 'persisted_docs' | 'temp.live_docs', documents: SessionEventSearchDocument[]): void {
+    const db = this._requireDb()
     const insert = db.prepare(`
-      INSERT INTO temp.live_docs (text, session_id, seq, type, time, surface, codepoint_length)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO ${table} (text, japanese_text, session_id, seq, type, time, surface, codepoint_length)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
-    for (const document of entry.documents) {
+    for (const document of documents) {
       const text = sanitizeFtsText(document.text)
       insert.run(
         text,
+        japaneseSearchText(text),
         document.sessionId,
         document.seq,
         document.type,
@@ -757,7 +750,12 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
       type: row.type as SessionEventSearchHit['type'],
       time: row.time,
       surface: row.surface as SessionEventSearchHit['surface'],
-      snippet: makeSnippet(row.marked_text, this.config.snippetChars),
+      snippet: makeSnippet(
+        row.marked_text.includes(FTS_HIGHLIGHT_START)
+          ? row.marked_text
+          : markJapaneseMatch(row.marked_text, row.marked_japanese_text),
+        this.config.snippetChars,
+      ),
     }
   }
 
@@ -813,6 +811,7 @@ function selectedDocumentsSql(): { sql: string } {
         CAST(pd.time AS INTEGER) AS time,
         pd.surface AS surface,
         highlight(persisted_docs, 0, ?, ?) AS marked_text,
+        highlight(persisted_docs, 1, ?, ?) AS marked_japanese_text,
         CAST(pd.codepoint_length AS INTEGER) AS document_length
       FROM persisted_docs AS pd
       JOIN persisted_sessions AS ps ON ps.id = pd.session_id
@@ -836,15 +835,18 @@ function selectedDocumentsSql(): { sql: string } {
         CAST(ld.time AS INTEGER) AS time,
         ld.surface AS surface,
         highlight(live_docs, 0, ?, ?) AS marked_text,
+        highlight(live_docs, 1, ?, ?) AS marked_japanese_text,
         CAST(ld.codepoint_length AS INTEGER) AS document_length
       FROM temp.live_docs AS ld
       JOIN temp.live_sessions AS ls ON ls.id = ld.session_id
       WHERE live_docs MATCH ?
     ), matched AS (
       SELECT *,
-        (
+        max(
           length(CAST(marked_text AS BLOB))
-          - length(CAST(replace(marked_text, ?, '') AS BLOB))
+          - length(CAST(replace(marked_text, ?, '') AS BLOB)),
+          length(CAST(marked_japanese_text AS BLOB))
+          - length(CAST(replace(marked_japanese_text, ?, '') AS BLOB))
         ) / ? AS match_count
       FROM candidates
     )`,
@@ -852,17 +854,22 @@ function selectedDocumentsSql(): { sql: string } {
 }
 
 function selectedDocumentsParams(query: string, persistenceVisible: boolean): Array<string | number> {
-  const expression = quoteFtsData(query)
+  const expression = `text : ${quoteFtsData(query)} OR japanese_text : ${quoteFtsData(japaneseSearchQuery(query))}`
   const visible = persistenceVisible ? 1 : 0
   return [
     FTS_HIGHLIGHT_START,
     FTS_HIGHLIGHT_END,
+    FTS_HIGHLIGHT_START,
+    FTS_HIGHLIGHT_END,
     expression,
     visible,
     visible,
     FTS_HIGHLIGHT_START,
     FTS_HIGHLIGHT_END,
+    FTS_HIGHLIGHT_START,
+    FTS_HIGHLIGHT_END,
     expression,
+    FTS_HIGHLIGHT_START,
     FTS_HIGHLIGHT_START,
     Buffer.byteLength(FTS_HIGHLIGHT_START, 'utf8'),
   ]

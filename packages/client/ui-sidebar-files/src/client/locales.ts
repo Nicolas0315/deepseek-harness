@@ -20,6 +20,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** Simplified Chinese dictionary and key-set source of truth. */
 export const zh = {
+  'sort.locale': 'zh-CN',
   'shortcut.noSession': '请先选择会话',
   'type.label': '文件',
   'guide.title': '工作区文件',
@@ -44,6 +45,7 @@ export type SidebarFilesKey = keyof typeof zh
 
 /** English dictionary, checked against the Chinese key set. */
 export const en = {
+  'sort.locale': 'en-US',
   'shortcut.noSession': 'Select a session first',
   'type.label': 'Files',
   'guide.title': 'Workspace files',
@@ -66,6 +68,7 @@ export const en = {
 
 /** Japanese dictionary, checked against the complete source key set. */
 export const ja: Record<keyof typeof en, string> = {
+  'sort.locale': 'ja-JP',
   'shortcut.noSession': 'まずセッションを選択してください',
   'type.label': 'ファイル',
   'guide.title': 'ワークスペースのファイル',

@@ -19,3 +19,13 @@ it('provides the complete Japanese installer copy and preserves format parameter
     expect(japanese.get(key)?.trim(), key).not.toBe('')
   }
 })
+
+it('uses the Japanese font selection in both native drawing paths', () => {
+  const source = readFileSync(new URL('../installer/strings.nsh', import.meta.url), 'utf8')
+  expect(source).toContain('LangString INSTALLER_FONT_FACE ${LANG_JAPANESE} "Yu Gothic UI"')
+  expect(source).toContain('LangString INSTALLER_FONT_FACE ${LANG_ENGLISH} "Microsoft YaHei UI"')
+  const drawing = readFileSync(new URL('../installer/drawing.nsh', import.meta.url), 'utf8')
+  const lifecycle = readFileSync(new URL('../installer/lifecycle.nsh', import.meta.url), 'utf8')
+  expect(drawing).toContain('$(INSTALLER_FONT_FACE)')
+  expect(lifecycle).toContain('w "$(INSTALLER_FONT_FACE)"')
+})

@@ -35,6 +35,8 @@ The plugin creates one agent per `sessionId` on first use. A registered model ad
 
 ### Configuration
 
+SDK-owned fixed diagnostics capture `DSH_LANG`, `LC_ALL`, `LC_MESSAGES`, `LANG`, then the system locale; `ja` selects Japanese and other languages select English. Direct `HarnessSdkJsonRpcServer` consumers may override this per instance with `language: 'en' | 'ja'`. Protocol keys, error codes/data, and raw adapter, Agent, and process failures remain unchanged.
+
 | Field | Default | Meaning |
 |---|---|---|
 | `maxTokensAsSuccess` | `false` | Report max-token turn/subagent termination as a successful SDK result |

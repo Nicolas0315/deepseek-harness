@@ -130,11 +130,11 @@ async function settleSubagent(
 }
 
 describe('HarnessSdkJsonRpcServer', () => {
-  it('waits only for an existing SDK-owned session and includes a child-triggered root turn', async () => {
+  it.each(['en', 'ja'] as const)('waits only for an existing SDK-owned session and includes a child-triggered root turn (%s)', async (language) => {
     const storageDir = await mkdtemp(join(tmpdir(), 'dsh-jsonrpc-wait-'))
     const ctx = await makeHarness(storageDir)
     const transport = new FakeTransport()
-    const server = new HarnessSdkJsonRpcServer(ctx, transport)
+    const server = new HarnessSdkJsonRpcServer(ctx, transport, { language })
     class Adapter extends LlmAdapter {
       override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
         return Promise.resolve({ provider, id: model, name: model })
@@ -148,10 +148,10 @@ describe('HarnessSdkJsonRpcServer', () => {
     }
     ctx.llm.registerAdapter(['mock'], new Adapter())
     try {
-      await expect(server.handleRequest('session/wait', { sessionId: 'missing' })).rejects.toThrow('not initialized')
+      await expect(server.handleRequest('session/wait', { sessionId: 'missing' })).rejects.toThrow(language === 'ja' ? '初期化されていません' : 'not initialized')
       await server.initialize({ cwd: storageDir, provider: 'mock', model: 'mock' })
-      await expect(server.handleRequest('session/wait', {})).rejects.toThrow('sessionId string')
-      await expect(server.handleRequest('session/wait', { sessionId: 'missing' })).rejects.toThrow('unknown SDK session')
+      await expect(server.handleRequest('session/wait', {})).rejects.toThrow(language === 'ja' ? '文字列の sessionId' : 'sessionId string')
+      await expect(server.handleRequest('session/wait', { sessionId: 'missing' })).rejects.toThrow(language === 'ja' ? '不明な SDK セッションです' : 'unknown SDK session')
       expect(ctx.agents.get(SessionId('missing'))).toBeUndefined()
       await server.prompt({ sessionId: 'main', contentBlocks: [{ type: 'text', text: 'delegate' }] })
       const parent = ctx.agents.get(SessionId('main'))!
@@ -171,7 +171,7 @@ describe('HarnessSdkJsonRpcServer', () => {
         && notification.params?.sessionId === 'main'
         && (notification.params.event as SessionEvent).type === 'turn/end')).toHaveLength(2)
       await server.shutdown()
-      await expect(server.handleRequest('session/wait', { sessionId: 'main' })).rejects.toThrow('unknown SDK session')
+      await expect(server.handleRequest('session/wait', { sessionId: 'main' })).rejects.toThrow(language === 'ja' ? '不明な SDK セッションです' : 'unknown SDK session')
     } finally {
       await server.shutdown()
       await ctx.fiber.dispose()
@@ -186,7 +186,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     const ctx = await makeHarness(join(root, 'sessions'), true)
     ctx.llm.registerAdapter(['mock'], new MockAdapter([textResponse('directory observed')]))
     const transport = new FakeTransport()
-    const server = new HarnessSdkJsonRpcServer(ctx, transport)
+    const server = new HarnessSdkJsonRpcServer(ctx, transport, { language: 'en' })
     try {
       await expect(server.handleRequest('session/working-directory/get', { sessionId: 'a' }))
         .rejects.toThrow('SDK server is not initialized')
@@ -221,7 +221,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     const ctx = await makeHarness(storageDir)
     try {
       const transport = new FakeTransport()
-      const server = new HarnessSdkJsonRpcServer(ctx, transport)
+      const server = new HarnessSdkJsonRpcServer(ctx, transport, { language: 'en' })
 
       const init = await server.handleRequest('initialize', {
         cwd: storageDir,
@@ -305,7 +305,7 @@ describe('HarnessSdkJsonRpcServer', () => {
       agents: { create, get: (id: SessionId) => liveAgents.get(String(id)) },
       get: () => undefined,
     } as unknown as Context
-    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language: 'en' })
     // This isolated prompt test begins after the handshake boundary.
     ;(server as unknown as { initialized: boolean }).initialized = true
     const prompt = (sessionId: string, text: string) => server.prompt({
@@ -341,7 +341,7 @@ describe('HarnessSdkJsonRpcServer', () => {
       agents: { create: vi.fn(async () => handle), get: () => agent },
       get: (name: string) => name === 'attachments' ? { saveImages } : undefined,
     } as unknown as Context
-    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language: 'en' })
     // This isolated prompt test begins after the handshake boundary.
     ;(server as unknown as { initialized: boolean }).initialized = true
 
@@ -361,7 +361,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     await server.shutdown()
   })
 
-  it('rejects inline SDK images when the composition has no attachment store', async () => {
+  it.each(['en', 'ja'] as const)('rejects inline SDK images when the composition has no attachment store (%s)', async (language) => {
     const followup = vi.fn<Agent['followup']>()
     const agent = ({ id: SessionId('image'), followup } satisfies Pick<Agent, 'id' | 'followup'>) as unknown as Agent
     const handle = { agent, dispose: vi.fn(() => Promise.resolve()) }
@@ -370,14 +370,14 @@ describe('HarnessSdkJsonRpcServer', () => {
       agents: { create: vi.fn(async () => handle), get: () => agent },
       get: () => undefined,
     } as unknown as Context
-    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language })
     // This isolated prompt test begins after the handshake boundary.
     ;(server as unknown as { initialized: boolean }).initialized = true
 
     await expect(server.prompt({
       sessionId: 'image',
       contentBlocks: [{ type: 'image', data: 'AQ==', mimeType: 'image/png' }],
-    })).rejects.toThrow('SDK image prompt requires an attachment store')
+    })).rejects.toThrow(language === 'ja' ? 'SDK の画像プロンプトには添付ファイルストアが必要です' : 'SDK image prompt requires an attachment store')
     expect(followup).not.toHaveBeenCalled()
     await server.shutdown()
   })
@@ -401,7 +401,7 @@ describe('HarnessSdkJsonRpcServer', () => {
       },
       get: (name: string) => name === 'attachments' ? { saveImages } : undefined,
     } as unknown as Context
-    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language: 'en' })
     // This isolated prompt test begins after the handshake boundary.
     ;(server as unknown as { initialized: boolean }).initialized = true
 
@@ -418,7 +418,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     await server.shutdown()
   })
 
-  it('rejects a prompt for a session whose agent was disposed outside the server', async () => {
+  it.each(['en', 'ja'] as const)('rejects a prompt for a session whose agent was disposed outside the server (%s)', async (language) => {
     const followup = vi.fn<Agent['followup']>()
     const agent = ({
       id: SessionId('zombie'),
@@ -437,7 +437,7 @@ describe('HarnessSdkJsonRpcServer', () => {
       },
       get: () => undefined,
     } as unknown as Context
-    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language })
     // This isolated prompt test begins after the handshake boundary.
     ;(server as unknown as { initialized: boolean }).initialized = true
     const prompt = (text: string) => server.prompt({
@@ -447,7 +447,7 @@ describe('HarnessSdkJsonRpcServer', () => {
 
     expect((await prompt('while live')).messageId).toBeTypeOf('string')
     live = false
-    await expect(prompt('after detach')).rejects.toThrow('session agent was disposed outside the server: zombie')
+    await expect(prompt('after detach')).rejects.toThrow(language === 'ja' ? 'セッションのエージェントがサーバーの外部で破棄されました: zombie' : 'session agent was disposed outside the server: zombie')
     // The detached agent was never driven by the rejected prompt.
     expect(followup).toHaveBeenCalledOnce()
     await server.shutdown()
@@ -458,7 +458,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     await ctx.plugin(SessionStore)
     await ctx.plugin(AgentRegistry)
     const transport = new FakeTransport()
-    const server = new HarnessSdkJsonRpcServer(ctx, transport)
+    const server = new HarnessSdkJsonRpcServer(ctx, transport, { language: 'en' })
     const session = ctx.sessions.create(SessionId('message-outcome'))
     const agent = ({
       id: SessionId('message-outcome'),
@@ -482,7 +482,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     const ctx = await makeHarness(storageDir)
     try {
       const transport = new FakeTransport()
-      const server = new HarnessSdkJsonRpcServer(ctx, transport)
+      const server = new HarnessSdkJsonRpcServer(ctx, transport, { language: 'en' })
 
       ctx.sessions.create(SessionId('root-session'), {
         meta: { cwd: storageDir },
@@ -513,7 +513,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     vi.stubEnv('DEEPSEEK_BASE_URL', llmServer.url)
     const ctx = await makeHarness(storageDir)
     try {
-      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language: 'en' })
 
       await server.initialize({ cwd: storageDir, provider: 'deepseek-official', model: 'plain-model' })
       await server.prompt({
@@ -534,7 +534,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     const ctx = await makeHarness(storageDir)
     try {
       const transport = new FakeTransport()
-      const server = new HarnessSdkJsonRpcServer(ctx, transport)
+      const server = new HarnessSdkJsonRpcServer(ctx, transport, { language: 'en' })
 
       const parentHandle = await ctx.agents.create({
         sessionId: SessionId('main'),
@@ -606,7 +606,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     const ctx = await makeHarness(storageDir)
     try {
       const transport = new FakeTransport()
-      const server = new HarnessSdkJsonRpcServer(ctx, transport)
+      const server = new HarnessSdkJsonRpcServer(ctx, transport, { language: 'en' })
       const parentHandle = await ctx.agents.create({
         sessionId: SessionId('collision-parent'),
         meta: { cwd: storageDir },
@@ -645,7 +645,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     const ctx = await makeHarness(storageDir)
     try {
       const transport = new FakeTransport()
-      const server = new HarnessSdkJsonRpcServer(ctx, transport)
+      const server = new HarnessSdkJsonRpcServer(ctx, transport, { language: 'en' })
       const parentHandle = await ctx.agents.create({
         sessionId: SessionId('continuation-parent'),
         meta: { cwd: storageDir },
@@ -691,7 +691,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     const ctx = await makeHarness(storageDir)
     try {
       const transport = new FakeTransport()
-      const server = new HarnessSdkJsonRpcServer(ctx, transport)
+      const server = new HarnessSdkJsonRpcServer(ctx, transport, { language: 'en' })
       const oldParent = await ctx.agents.create({
         sessionId: SessionId('old-parent'),
         meta: { cwd: storageDir },
@@ -790,7 +790,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     const ctx = await makeHarness(storageDir)
     try {
       const transport = new FakeTransport()
-      const server = new HarnessSdkJsonRpcServer(ctx, transport)
+      const server = new HarnessSdkJsonRpcServer(ctx, transport, { language: 'en' })
       const parent = await ctx.agents.create({
         sessionId: SessionId('provider-reuse-parent'),
         meta: { cwd: storageDir },
@@ -920,7 +920,7 @@ describe('HarnessSdkJsonRpcServer', () => {
         signal: new AbortController().signal,
       }, true)
       const transport = new FakeTransport()
-      const server = new HarnessSdkJsonRpcServer(ctx, transport, { maxTokensAsSuccess: true })
+      const server = new HarnessSdkJsonRpcServer(ctx, transport, { maxTokensAsSuccess: true, language: 'en' })
 
       missedStartResult.resolve({ output: [], stopReason: 'max-tokens' })
       await missedStartRun.result
@@ -993,7 +993,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
     await ctx.plugin(LlmDeepSeek)
     try {
-      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language: 'en' })
       const inspect = server as unknown as { hasAdapterFor(provider: string): boolean }
 
       expect(inspect.hasAdapterFor('deepseek-official')).toBe(true)
@@ -1014,7 +1014,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
     await ctx.plugin(LlmDeepSeek)
     try {
-      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language: 'en' })
 
       await expect(server.initialize({ cwd: storageDir, provider: 'private', model: 'new-model' }))
         .rejects.toThrow('no adapter registered for provider "private"')
@@ -1035,7 +1035,7 @@ describe('HarnessSdkJsonRpcServer', () => {
       const storageDir = await mkdtemp(join(tmpdir(), 'dsh-jsonrpc-invalid-max-tokens-'))
       const ctx = await makeHarness(storageDir)
       try {
-        const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+        const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language: 'en' })
         await expect(server.initialize({
           cwd: storageDir,
           provider: 'deepseek-official',
@@ -1052,7 +1052,7 @@ describe('HarnessSdkJsonRpcServer', () => {
 
   it('rejects malformed initialize reasoningEffort values at the wire boundary', async () => {
     const ctx = new Context()
-    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language: 'en' })
     try {
       for (const reasoningEffort of ['', 42]) {
         await expect(server.handleRequest('initialize', {
@@ -1082,7 +1082,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     }
     const disposeAdapter = ctx.llm.registerAdapter(['private'], new RejectingAdapter())
     try {
-      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language: 'en' })
       await expect(server.initialize({ cwd: storageDir, provider: 'private', model: 'missing' }))
         .rejects.toThrow('model unavailable: private/missing')
       await expect(server.prompt({
@@ -1116,7 +1116,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     }
     const disposeAdapter = ctx.llm.registerAdapter(['private'], new PendingAdapter())
     try {
-      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language: 'en' })
       const initialization = server.initialize({ cwd: storageDir, provider: 'private', model: 'selected' })
       await vi.waitFor(() => { expect(resolveModelCalled).toBe(true) })
 
@@ -1142,7 +1142,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     const ctx = await makeHarness(storageDir)
     vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
     try {
-      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language: 'en' })
       await expect(server.handleRequest('initialize', {
         cwd: storageDir,
         provider: 'deepseek-official',
@@ -1160,12 +1160,9 @@ describe('HarnessSdkJsonRpcServer', () => {
   it('reports no adapter when the LLM service is absent', async () => {
     const ctx = new Context()
     try {
-      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport()) as unknown as {
-        hasAdapterFor(model: string): boolean
-        shutdown(): Promise<Record<string, never>>
-      }
+      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language: 'en' })
 
-      expect(server.hasAdapterFor('missing-model')).toBe(false)
+      expect(server['hasAdapterFor']('missing-model')).toBe(false)
       await server.shutdown()
     } finally {
       await ctx.fiber.dispose()
@@ -1176,7 +1173,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     const storageDir = await mkdtemp(join(tmpdir(), 'dsh-jsonrpc-unknown-'))
     const ctx = await makeHarness(storageDir)
     try {
-      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language: 'en' })
 
       await expect(server.handleRequest('does/not/exist', {}))
         .rejects
@@ -1189,7 +1186,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     }
   })
 
-  it('coalesces concurrent session creation and retries a failed creation', async () => {
+  it.each(['en', 'ja'] as const)('coalesces concurrent session creation and retries a failed creation (%s)', async (language) => {
     let resolveShared: ((handle: AgentHandle) => void) | undefined
     const sharedCreation = new Promise<AgentHandle>((resolve) => { resolveShared = resolve })
     const sharedHandle = { agent: {} as Agent, dispose: vi.fn(() => Promise.resolve()) }
@@ -1203,26 +1200,23 @@ describe('HarnessSdkJsonRpcServer', () => {
       agents: { create, get: () => undefined },
       get: () => undefined,
     } as unknown as Context
-    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport()) as unknown as {
-      getOrCreateSession(sessionId: string): Promise<{ handle: AgentHandle }>
-      shutdown(): Promise<Record<string, never>>
-    }
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language })
 
-    const first = server.getOrCreateSession('shared')
-    const second = server.getOrCreateSession('shared')
+    const first = server['getOrCreateSession']('shared')
+    const second = server['getOrCreateSession']('shared')
     expect(create).toHaveBeenCalledTimes(1)
     resolveShared?.(sharedHandle)
     const [firstRecord, secondRecord] = await Promise.all([first, second])
     expect(firstRecord).toBe(secondRecord)
 
-    await expect(server.getOrCreateSession('retry')).rejects.toThrow('creation failed')
-    await expect(server.getOrCreateSession('retry')).resolves.toMatchObject({ handle: retryHandle })
+    await expect(server['getOrCreateSession']('retry')).rejects.toThrow('creation failed')
+    await expect(server['getOrCreateSession']('retry')).resolves.toMatchObject({ handle: retryHandle })
     expect(create).toHaveBeenCalledTimes(3)
 
     await server.shutdown()
     expect(sharedHandle.dispose).toHaveBeenCalledOnce()
     expect(retryHandle.dispose).toHaveBeenCalledOnce()
-    await expect(server.getOrCreateSession('after-shutdown')).rejects.toThrow('SDK server is shutting down')
+    await expect(server['getOrCreateSession']('after-shutdown')).rejects.toThrow(language === 'ja' ? 'SDK サーバーは終了処理中です' : 'SDK server is shutting down')
   })
 
   it('resolves a relative cwd before creating the session', async () => {
@@ -1234,7 +1228,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     }))
     const create = vi.spyOn(ctx.agents, 'create')
     const resolveCallConfig = vi.spyOn(ctx.llm, 'resolveCallConfig')
-    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language: 'en' })
     try {
       await server.initialize({ cwd: '.', provider: 'mock', model: 'model', reasoningEffort: ReasoningEffortId('high'), maxTokens: 123 })
       await server.prompt({ sessionId: 'relative', contentBlocks: [{ type: 'text', text: 'test relative cwd' }] })
@@ -1261,7 +1255,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     }
   })
 
-  it('settles every teardown and aggregates multiple failures', async () => {
+  it.each(['en', 'ja'] as const)('settles every teardown and aggregates multiple failures (%s)', async (language) => {
     const firstDispose = vi.fn(() => { throw new Error('first teardown failed') })
     const secondDispose = vi.fn(() => Promise.reject(new Error('second teardown failed')))
     const ctx = {
@@ -1269,14 +1263,11 @@ describe('HarnessSdkJsonRpcServer', () => {
       agents: { create: vi.fn(), get: () => undefined },
       get: () => undefined,
     } as unknown as Context
-    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport()) as unknown as {
-      sessions: Map<string, { handle: AgentHandle; lastTurnEnd: undefined; activePrompt: boolean }>
-      shutdown(): Promise<Record<string, never>>
-    }
-    server.sessions.set('first', { handle: { agent: {} as Agent, dispose: firstDispose }, lastTurnEnd: undefined, activePrompt: false })
-    server.sessions.set('second', { handle: { agent: {} as Agent, dispose: secondDispose }, lastTurnEnd: undefined, activePrompt: false })
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language })
+    server['sessions'].set('first', { handle: { agent: {} as Agent, dispose: firstDispose }, failure: undefined })
+    server['sessions'].set('second', { handle: { agent: {} as Agent, dispose: secondDispose }, failure: undefined })
 
-    await expect(server.shutdown()).rejects.toThrow('SDK server teardown failed')
+    await expect(server.shutdown()).rejects.toThrow(language === 'ja' ? 'SDK サーバーの後処理が失敗しました' : 'SDK server teardown failed')
     expect(firstDispose).toHaveBeenCalledOnce()
     expect(secondDispose).toHaveBeenCalledOnce()
   })
@@ -1297,7 +1288,7 @@ describe('HarnessSdkJsonRpcServer', () => {
       agents: { create: vi.fn(), get: () => undefined },
       get: () => undefined,
     } as unknown as Context
-    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { language: 'en' })
 
     await expect(server.shutdown()).rejects.toBe(listenerFailure)
     expect(disposed.toSorted()).toEqual(Array.from({ length: subscription }, (_, index) => index + 1))

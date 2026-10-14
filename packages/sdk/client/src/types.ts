@@ -22,6 +22,8 @@ export type NotificationFilter = (notification: HarnessNotification) => boolean
 
 /** Launch and timeout options for {@link HarnessClient}. */
 export interface HarnessClientOptions {
+  /** Diagnostic language; omitted captures DSH_LANG, locale environment, then system locale. */
+  language?: 'en' | 'ja'
   /** Absolute or caller-relative dsh CLI module; omitted resolves this package's same-version dependency. */
   dshBin?: string
   /** Named profile serving the SDK protocol (default `sdk`). */

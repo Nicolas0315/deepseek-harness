@@ -25,6 +25,8 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+Startup help, task validation, reasoning headings, and Session-adoption failures use the [command-line diagnostic language](../../boot/cmdline/README.md#parsing-your-flags). Japanese diagnostics also stay inside the error event when `--json` is selected; task text and provider output are preserved.
+
 Run one task, get the final answer, and exit. The task is the command-line argument, or stdin when you omit it; the whole invocation is the smallest working example.
 
 ### Running a one-shot task

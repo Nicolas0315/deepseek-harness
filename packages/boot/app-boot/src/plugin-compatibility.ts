@@ -1,5 +1,7 @@
 /** Evaluate plugin dsh peer requirements without importing plugin code. */
 
+import { diagnosticMessages, defaultDiagnosticLocale } from './diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import semver from 'semver'
@@ -14,38 +16,42 @@ export interface PluginCompatibility {
   exempted: boolean
 }
 
-function objectOf(value: unknown, field: string): Record<string, unknown> {
+function objectOf(value: unknown, field: string, locale: DiagnosticLocale): Record<string, unknown> {
+  const messages = diagnosticMessages(locale)
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`${field} must be an object`)
+    throw new Error(messages.mustBeAnObject(field))
   }
   return value as Record<string, unknown>
 }
 
-function runtimeVersionOf(value: unknown): string {
+function runtimeVersionOf(value: unknown, locale: DiagnosticLocale): string {
+  const messages = diagnosticMessages(locale)
   if (typeof value !== 'string' || semver.valid(value) === null) {
-    throw new Error(`Invalid dsh runtime version: ${JSON.stringify(value)}; expected a semantic version`)
+    throw new Error(messages.invalidDshRuntimeVersionExpectedASemanticVersion(JSON.stringify(value)))
   }
   return value
 }
 
-function identityField(manifest: Record<string, unknown>, field: 'name' | 'version'): string {
+function identityField(manifest: Record<string, unknown>, field: 'name' | 'version', locale: DiagnosticLocale): string {
+  const messages = diagnosticMessages(locale)
   const value = Object.hasOwn(manifest, field) ? manifest[field] : undefined
   if (typeof value !== 'string' || value.trim() === '') {
-    throw new Error(`Plugin manifest ${field} must be a non-empty string when dsh peers are incompatible`)
+    throw new Error(messages.pluginManifestMustBeANonEmptyStringWhen(field))
   }
   return value
 }
 
 /**
  * Read this app-boot package's version in both source and bundled installations.
+ * @param locale - diagnostic language captured for this operation.
  * @returns the validated runtime semantic version, preserving its exact spelling.
  * @throws if package.json cannot be read or its version is missing or invalid.
  */
-export function getDshRuntimeVersion(): string {
+export function getDshRuntimeVersion(locale: DiagnosticLocale = defaultDiagnosticLocale()): string {
   // The executable's virtual filesystem intercepts string paths, not URL arguments.
   const filename = fileURLToPath(new URL('../package.json', import.meta.url))
-  const manifest = objectOf(JSON.parse(fs.readFileSync(filename, 'utf8')), 'app-boot package.json')
-  return runtimeVersionOf(Object.hasOwn(manifest, 'version') ? manifest.version : undefined)
+  const manifest = objectOf(JSON.parse(fs.readFileSync(filename, 'utf8')), 'app-boot package.json', locale)
+  return runtimeVersionOf(Object.hasOwn(manifest, 'version') ? manifest.version : undefined, locale)
 }
 
 /**
@@ -55,22 +61,26 @@ export function getDshRuntimeVersion(): string {
  * @param manifest - parsed plugin package.json; inherited fields are ignored.
  * @param exemptions - exact plugin name@version keys mapped to exact runtime versions.
  * @param runtimeVersion - running dsh version, defaulting to this app-boot package.
+ * @param locale - diagnostic language captured for this operation.
  * @returns incompatible peers and exemption status, or undefined when none are incompatible.
  * @throws for malformed manifest peer fields, invalid runtime versions, or missing identity on a mismatch.
  */
 export function evaluatePluginCompatibility(
   manifest: object,
   exemptions: Readonly<Record<string, readonly string[]>> = {},
-  runtimeVersion = getDshRuntimeVersion(),
+  runtimeVersion?: string,
+  locale: DiagnosticLocale = defaultDiagnosticLocale(),
 ): PluginCompatibility | undefined {
-  runtimeVersionOf(runtimeVersion)
-  const fields = objectOf(manifest, 'Plugin manifest')
+  const messages = diagnosticMessages(locale)
+  runtimeVersion ??= getDshRuntimeVersion(locale)
+  runtimeVersionOf(runtimeVersion, locale)
+  const fields = objectOf(manifest, messages.pluginManifest, locale)
   if (!Object.hasOwn(fields, 'peerDependencies')) return undefined
-  const dependencies = objectOf(fields.peerDependencies, 'Plugin manifest peerDependencies')
+  const dependencies = objectOf(fields.peerDependencies, messages.pluginManifestPeers, locale)
   const peers: Record<string, string> = {}
   for (const [name, range] of Object.entries(dependencies)) {
     if (typeof range !== 'string') {
-      throw new Error(`Plugin manifest peerDependencies[${JSON.stringify(name)}] must be a string`)
+      throw new Error(messages.pluginManifestPeerDependenciesMustBeAString(JSON.stringify(name)))
     }
     if (name !== '@deepseek-ai/dsh' && !name.startsWith('@deepseek-ai/dsh-')) continue
     const requirement = ['workspace:^', 'workspace:~', 'workspace:*'].includes(range) ? runtimeVersion : range
@@ -79,8 +89,8 @@ export function evaluatePluginCompatibility(
     }
   }
   if (Object.keys(peers).length === 0) return undefined
-  const name = identityField(fields, 'name')
-  const version = identityField(fields, 'version')
+  const name = identityField(fields, 'name', locale)
+  const version = identityField(fields, 'version', locale)
   const key = `${name}@${version}`
   const exemptedVersions = Object.hasOwn(exemptions, key) ? exemptions[key] : undefined
   const exempted = exemptedVersions?.includes(runtimeVersion) === true
@@ -91,13 +101,14 @@ export function evaluatePluginCompatibility(
  * Describe incompatible peers, their risk, and the exact-version remedy.
  * Surfaces with their own grant mechanism or locale render the structured result themselves.
  * @param issue - incompatible plugin/runtime result, including exempted mismatches.
- * @returns an English diagnostic for logs and stderr.
+ * @param locale - diagnostic language captured for this operation.
+ * @returns a diagnostic in the operation's selected language for logs and stderr.
  */
-export function pluginCompatibilityWarning(issue: PluginCompatibility): string {
+export function pluginCompatibilityWarning(issue: PluginCompatibility, locale: DiagnosticLocale = defaultDiagnosticLocale()): string {
+  const messages = diagnosticMessages(locale)
   const key = `${issue.name}@${issue.version}`
-  return `Plugin ${key} is incompatible with dsh ${issue.runtimeVersion}: peerDependencies ${JSON.stringify(issue.peers)}. `
-    + 'Running it may cause crashes or data loss. '
-    + 'Update the plugin or install a plugin version compatible with this dsh runtime. '
-    + `To accept this risk explicitly, grant the exact-version exemption for ${key} on dsh ${issue.runtimeVersion} with \`dsh plugin allow-version\` or the plugin manager, then retry the installation or restart dsh. `
-    + `Exact-version exemption: ${issue.exempted ? 'active' : 'not active'}.`
+  return messages.pluginIncompatible(
+    key, issue.runtimeVersion, JSON.stringify(issue.peers), key, issue.runtimeVersion,
+    issue.exempted ? messages.activeExemption : messages.inactiveExemption,
+  )
 }

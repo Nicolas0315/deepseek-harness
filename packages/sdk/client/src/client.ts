@@ -12,6 +12,8 @@
  * @module @deepseek-ai/dsh-sdk-client/client
  */
 
+import { resolveDiagnosticLocale, type DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
+import { diagnostics } from './diagnostics.ts'
 import { spawn, type ChildProcess } from 'node:child_process'
 import {
   JsonRpcLineTransport,
@@ -97,6 +99,7 @@ class NotificationSubscriptionImpl implements NotificationSubscription {
   constructor(
     private readonly state: SubscriptionState,
     private readonly unsubscribe: () => void,
+    private readonly language: DiagnosticLocale,
   ) {}
 
   /**
@@ -128,7 +131,7 @@ class NotificationSubscriptionImpl implements NotificationSubscription {
     // The drop is part of this method's contract; a runtime-death fail() keeps
     // the queue so already-delivered notifications remain drainable.
     this.state.queue.length = 0
-    this.fail(new TransportClosedError('notification subscription closed'))
+    this.fail(new TransportClosedError(diagnostics[this.language].subscriptionClosed()))
   }
 
   /**
@@ -185,6 +188,8 @@ class NotificationSubscriptionImpl implements NotificationSubscription {
 export class HarnessClient {
   /** Original public dsh launch and timeout options for this client. */
   readonly options: HarnessClientOptions
+  /** Diagnostic language captured independently for this runtime instance. */
+  readonly language: DiagnosticLocale
   private readonly runtime: RuntimeProcessOptions
   private child: ChildProcess | undefined
   private transport: JsonRpcLineTransport | undefined
@@ -202,6 +207,8 @@ export class HarnessClient {
   constructor(options: HarnessClientOptions = {}, runtime?: RuntimeProcessOptions) {
     this.options = options
     this.runtime = runtime ?? resolveDshLaunch(options)
+    this.language = options.language ?? this.runtime.language
+      ?? resolveDiagnosticLocale(this.runtime.environment(), Intl.DateTimeFormat().resolvedOptions().locale)
   }
 
   /**
@@ -209,11 +216,11 @@ export class HarnessClient {
    * the process is live; rejects reuse after {@link close}.
    */
   start(): void {
-    if (this.closeTask !== undefined) throw new TransportClosedError('DeepSeek Harness runtime client is closed')
+    if (this.closeTask !== undefined) throw new TransportClosedError(diagnostics[this.language].clientClosed())
     if (this.child !== undefined) return
     const child = spawn(this.runtime.command, this.runtime.args, {
       cwd: this.runtime.cwd,
-      env: this.runtime.environment(),
+      env: { ...this.runtime.environment(), DSH_LANG: this.language },
       stdio: ['pipe', 'pipe', 'pipe'],
     })
     this.child = child
@@ -222,7 +229,7 @@ export class HarnessClient {
       // A spawn failure destroys the pipes without an input 'end' edge, so the
       // transport's pending requests must be failed here.
       this.transport?.close()
-      this.failSubscriptions(this.closedError('DeepSeek Harness runtime failed to start'))
+      this.failSubscriptions(this.closedError(diagnostics[this.language].failedStart()))
     })
     // Writes racing the runtime's death EPIPE on stdin; the exit edge below is
     // the real signal, so the stream-level error only needs to be non-fatal.
@@ -254,7 +261,7 @@ export class HarnessClient {
       this.exitCode = code
       settled.exited = true
       maybeSettle()
-      this.failSubscriptions(this.closedError('DeepSeek Harness runtime exited'))
+      this.failSubscriptions(this.closedError(diagnostics[this.language].exited()))
     })
     child.once('close', () => {
       // All stdio has settled: stdout 'end' already drained every tail frame,
@@ -262,7 +269,7 @@ export class HarnessClient {
       // will never be answered.
       this.transport?.close()
     })
-    const transport = new JsonRpcLineTransport(child.stdout, child.stdin)
+    const transport = new JsonRpcLineTransport(child.stdout, child.stdin, this.language)
     transport.onNotification((method, params) => { this.dispatchNotification({ method, params }) })
     transport.start()
     this.transport = transport
@@ -277,7 +284,7 @@ export class HarnessClient {
     const result = await this.request('initialize', { ...params }, this.runtime.initializeTimeoutMs)
     if (!isRecord(result) || !isRecord(result.serverInfo)
       || typeof result.serverInfo.name !== 'string' || typeof result.serverInfo.version !== 'string') {
-      throw new SdkProtocolError(`initialize returned no server identity: ${JSON.stringify(result)}`)
+      throw new SdkProtocolError(diagnostics[this.language].identity(JSON.stringify(result)))
     }
     return { serverInfo: { name: result.serverInfo.name, version: result.serverInfo.version } }
   }
@@ -292,7 +299,7 @@ export class HarnessClient {
     const params: SessionPromptParams = { sessionId, contentBlocks }
     const result = await this.request('session/prompt', { ...params })
     if (!isRecord(result) || typeof result.messageId !== 'string') {
-      throw new SdkProtocolError(`session/prompt returned no message id: ${JSON.stringify(result)}`)
+      throw new SdkProtocolError(diagnostics[this.language].messageId(JSON.stringify(result)))
     }
     return result.messageId
   }
@@ -319,7 +326,7 @@ export class HarnessClient {
   private async workingDirectoryRequest(method: string, params: object): Promise<string> {
     const result = await this.request(method, params)
     if (!isRecord(result) || typeof result.cwd !== 'string') {
-      throw new SdkProtocolError(`${method} returned no working directory: ${JSON.stringify(result)}`)
+      throw new SdkProtocolError(diagnostics[this.language].workingDirectory(method, JSON.stringify(result)))
     }
     return result.cwd
   }
@@ -339,11 +346,11 @@ export class HarnessClient {
     // writing into a destroyed pipe and hanging until the timeout.
     if (this.exitCode !== undefined || this.spawnError !== undefined) {
       await this.settleStreams()
-      throw this.closedError('DeepSeek Harness runtime is not running')
+      throw this.closedError(diagnostics[this.language].notRunning())
     }
     const transport = this.transport
     /* v8 ignore next -- start() either sets the transport or throws */
-    if (transport === undefined) throw new TransportClosedError('DeepSeek Harness runtime is not running')
+    if (transport === undefined) throw new TransportClosedError(diagnostics[this.language].notRunning())
     const timeout = timeoutMs ?? this.runtime.requestTimeoutMs
     try {
       if (timeout === undefined) return await transport.request(method, params ?? {})
@@ -352,8 +359,8 @@ export class HarnessClient {
       // retain no per-call state (the server-side work still runs to close).
       const abandon = new AbortController()
       const timer = setTimeout(() => {
-        const stderr = this.stderrTail.length === 0 ? '' : `; stderr tail:\n${this.stderrTail.join('\n')}`
-        abandon.abort(new RequestTimeoutError(`${method} timed out after ${timeout}ms waiting for ${this.runtime.description}${stderr}`))
+        const stderr = this.stderrTail.length === 0 ? '' : `; ${diagnostics[this.language].stderr(this.stderrTail.join('\n'))}`
+        abandon.abort(new RequestTimeoutError(diagnostics[this.language].timeout(method, timeout, this.runtime.description, stderr)))
       }, timeout)
       try {
         return await transport.request(method, params ?? {}, abandon.signal)
@@ -378,9 +385,9 @@ export class HarnessClient {
   subscribe(filter?: NotificationFilter): NotificationSubscription {
     const id = String(this.subscriptionSerial++)
     const state: SubscriptionState = { queue: [], waiters: [], filter, failure: undefined }
-    const subscription = new NotificationSubscriptionImpl(state, () => { this.subscriptions.delete(id) })
+    const subscription = new NotificationSubscriptionImpl(state, () => { this.subscriptions.delete(id) }, this.language)
     if (this.closeTask !== undefined || this.exitCode !== undefined || this.spawnError !== undefined) {
-      subscription.fail(this.closedError('DeepSeek Harness runtime closed'))
+      subscription.fail(this.closedError(diagnostics[this.language].closed()))
       return subscription
     }
     this.subscriptions.set(id, subscription)
@@ -426,14 +433,14 @@ export class HarnessClient {
     } catch (error) {
       // Diagnostic only: the dispose ladder below is the authoritative teardown
       // for a runtime that cannot answer shutdown anymore.
-      this.appendStderr([`shutdown request failed: ${errorMessage(error)}`])
+      this.appendStderr([diagnostics[this.language].shutdown(errorMessage(error))])
     }
     await disposeRuntimeProcess(child, {
       disposeEofGraceMs: this.runtime.disposeEofGraceMs ?? 6_000,
       disposeGraceMs: this.runtime.disposeGraceMs ?? 3_000,
-    })
+    }, process.platform, this.language)
     this.transport?.close()
-    this.failSubscriptions(this.closedError('DeepSeek Harness runtime closed'))
+    this.failSubscriptions(this.closedError(diagnostics[this.language].closed()))
   }
 
   private dispatchNotification(notification: HarnessNotification): void {
@@ -486,9 +493,9 @@ export class HarnessClient {
 
   private closedError(reason: string): TransportClosedError {
     const parts = [`${this.runtime.description}: ${reason}`]
-    if (this.spawnError !== undefined) parts.push(`spawn error: ${this.spawnError.message}`)
-    if (this.exitCode !== undefined) parts.push(`exit code: ${String(this.exitCode)}`)
-    if (this.stderrTail.length > 0) parts.push(`stderr tail:\n${this.stderrTail.join('\n')}`)
+    if (this.spawnError !== undefined) parts.push(diagnostics[this.language].spawn(this.spawnError.message))
+    if (this.exitCode !== undefined) parts.push(diagnostics[this.language].exitCode(String(this.exitCode)))
+    if (this.stderrTail.length > 0) parts.push(diagnostics[this.language].stderr(this.stderrTail.join('\n')))
     return new TransportClosedError(parts.join('\n'))
   }
 }

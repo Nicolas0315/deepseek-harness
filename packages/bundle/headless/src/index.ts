@@ -10,6 +10,8 @@
  * @module @deepseek-ai/dsh-headless
  */
 
+import { diagnosticMessages } from './diagnostics.ts'
+import { resolveCommandLocale } from '@deepseek-ai/dsh-cmdline'
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -70,7 +72,7 @@ interface HeadlessIo {
 }
 
 /** Aggregate the last assistant text and turn outcome in one owned interval. */
-function summarize(session: Session, firstSeq: SessionLogOffset): RunOutcome {
+function summarize(session: Session, firstSeq: SessionLogOffset, messages: ReturnType<typeof diagnosticMessages>): RunOutcome {
   let started = false
   let text = ''
   let reason: SessionEvent<'turn/end'>['data']['reason'] | undefined
@@ -79,7 +81,7 @@ function summarize(session: Session, firstSeq: SessionLogOffset): RunOutcome {
     // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
     const event = session.eventAt(SessionSeq(seq))
     if (event === undefined) {
-      throw new Error(`headless summary cannot read seq ${String(seq)} below captured length ${String(length)}`)
+      throw new Error(messages.headlessSummaryCannotReadSeqBelowCapturedLength(String(seq), String(length)))
     }
     if (event.type === 'turn/start') {
       started = true
@@ -111,6 +113,7 @@ function streamReasoning(
   agent: Agent,
   stderr: HeadlessIo['stderr'],
 ): () => void {
+  const messages = diagnosticMessages(resolveCommandLocale(ctx))
   let open = false
   let endsWithNewline = true
   const close = (): void => {
@@ -134,7 +137,7 @@ function streamReasoning(
       case 'reasoning-delta':
         if (chunk.text === '') return
         if (!open) {
-          stderr.write('dsh: reasoning:\n')
+          stderr.write(messages.reasoning)
           open = true
         }
         stderr.write(chunk.text)
@@ -173,13 +176,13 @@ interface AdoptableHeader {
 }
 
 /** Iterate a live Session's durable events in order. */
-function* liveEvents(session: Session): Generator<SessionEvent> {
+function* liveEvents(session: Session, messages: ReturnType<typeof diagnosticMessages>): Generator<SessionEvent> {
   const length = session.seq
   for (let seq = 0; seq < length; seq++) {
     // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
     const event = session.eventAt(SessionSeq(seq))
     if (event === undefined) {
-      throw new Error(`headless adoption cannot read seq ${String(seq)} below captured length ${String(length)}`)
+      throw new Error(messages.headlessAdoptionCannotReadSeqBelowCapturedLength(String(seq), String(length)))
     }
     yield event
   }
@@ -190,7 +193,9 @@ function* liveEvents(session: Session): Generator<SessionEvent> {
  * the last `agent-preset/selected` event. The header is only a creation fact;
  * the presets plugin reconstructs a session's composition from the projection.
  */
-function currentPreset(header: AdoptableHeader, events: Iterable<SessionEvent>, sessionId: SessionId): string | undefined {
+function currentPreset(
+  header: AdoptableHeader, events: Iterable<SessionEvent>, sessionId: SessionId, messages: ReturnType<typeof diagnosticMessages>,
+): string | undefined {
   let preset = header.agentPreset
   for (const event of events) {
     // Owned by dsh-agent-preset-registry, which this bundle does not compose, so the
@@ -201,7 +206,7 @@ function currentPreset(header: AdoptableHeader, events: Iterable<SessionEvent>, 
     // A corrupt record must not read as "no preset": that would let the run
     // continue under this bundle's composition instead of the recorded one.
     if (typeof selected !== 'string' || selected === '') {
-      throw new Error(`session "${sessionId}" records a malformed agent-preset/selected event and cannot be adopted`)
+      throw new Error(messages.sessionRecordsAMalformedAgentPresetSelectedEventAnd(String(sessionId)))
     }
     preset = selected
   }
@@ -209,24 +214,27 @@ function currentPreset(header: AdoptableHeader, events: Iterable<SessionEvent>, 
 }
 
 /** Reject a Session the one-shot runner must not adopt. */
-function assertAdoptable(header: AdoptableHeader, events: Iterable<SessionEvent>, sessionId: SessionId, cwd: string): void {
-  const preset = currentPreset(header, events, sessionId)
+function assertAdoptable(
+  header: AdoptableHeader, events: Iterable<SessionEvent>, sessionId: SessionId, cwd: string,
+  messages: ReturnType<typeof diagnosticMessages>,
+): void {
+  const preset = currentPreset(header, events, sessionId, messages)
   if (preset !== undefined) {
     // This bundle composes no preset roster, so resuming the session here would
     // silently run it under the headless tools and prompts instead of the
     // composition its log records.
     throw new Error(
-      `session "${sessionId}" runs under agent preset "${preset}", which the one-shot runner does not compose`,
+      messages.sessionRunsUnderAgentPresetWhichTheOneShot(String(sessionId), preset),
     )
   }
   if (header.origin === 'subagent' || header.parentSession !== undefined) {
-    throw new Error(`session "${sessionId}" is a subagent or forked session and cannot be driven directly`)
+    throw new Error(messages.sessionIsASubagentOrForkedSessionAndCannot(String(sessionId)))
   }
   if (header.cwd === undefined) {
-    throw new Error(`session "${sessionId}" recorded no working directory, so it cannot be adopted`)
+    throw new Error(messages.sessionRecordedNoWorkingDirectorySoItCannotBe(String(sessionId)))
   }
   if (header.cwd !== cwd) {
-    throw new Error(`session "${sessionId}" was recorded in "${header.cwd}", not "${cwd}"`)
+    throw new Error(messages.sessionWasRecordedInNot(String(sessionId), header.cwd, cwd))
   }
 }
 
@@ -251,17 +259,18 @@ async function resolveAgent(
   setup: (agentCtx: Context) => void,
   cwd: string,
 ): Promise<Agent> {
+  const messages = diagnosticMessages(resolveCommandLocale(ctx))
   // Resuming promises the caller a log a later process can continue. Without a
   // durable log the run would succeed, print the id, and still lose the whole
   // history at exit, so a miscomposed profile fails loud before the resume.
   if (ctx.get('sessionPersistence') === undefined) {
-    throw new Error('headless --session-id requires the sessionPersistence service; the Session would not survive this process')
+    throw new Error(messages.headlessSessionIdRequiresTheSessionPersistenceServiceTheSession)
   }
   // A later process holds no live Agent and has to find the id through the
   // query service, so every --session-id run requires it.
   const query = ctx.get('sessionQuery')
   if (query === undefined) {
-    throw new Error('headless --session-id requires the sessionQuery service; dsh-base provides it')
+    throw new Error(messages.headlessSessionIdRequiresTheSessionQueryServiceDshBase)
   }
   const live = agents.get(sessionId)
   if (live !== undefined) {
@@ -271,17 +280,17 @@ async function resolveAgent(
     // The runner cannot claim an exclusive interval over an Agent it did not
     // create, so it refuses the identity; the adoptability rules run first so a
     // real mismatch is named instead of the generic refusal.
-    assertAdoptable(live.session.header, liveEvents(live.session), sessionId, cwd)
-    throw new Error(`session "${sessionId}" is live in this process, so the one-shot runner cannot own an exclusive run interval`)
+    assertAdoptable(live.session.header, liveEvents(live.session, messages), sessionId, cwd, messages)
+    throw new Error(messages.sessionIsLiveInThisProcessSoTheOne(String(sessionId)))
   }
   try {
     using observation = await query.observeSession(sessionId)
-    assertAdoptable(observation.header, observation.events, sessionId, cwd)
+    assertAdoptable(observation.header, observation.events, sessionId, cwd, messages)
     const { agent } = await agents.resume({ resumeSessionId: sessionId, agentOptions, setup })
     // The observation is a snapshot: another writer may have appended a preset
     // selection before this process took the write lease. Re-check the log
     // resume actually attached, now that no other process can append.
-    assertAdoptable(agent.session.header, liveEvents(agent.session), sessionId, cwd)
+    assertAdoptable(agent.session.header, liveEvents(agent.session, messages), sessionId, cwd, messages)
     return agent
   } catch (error: unknown) {
     if (!(error instanceof SessionQueryError) || error.code !== 'SESSION_QUERY_SESSION_NOT_FOUND') throw error
@@ -289,7 +298,7 @@ async function resolveAgent(
     // one is the no-id path, which generates its own identity and reports it in
     // the `session` event. Creating the requested id here would turn a typo
     // into a brand-new empty history the caller believes it is continuing.
-    throw new Error(`session "${sessionId}" does not exist; omit --session-id to start a new Session`)
+    throw new Error(messages.sessionDoesNotExistOmitSessionIdToStart(String(sessionId)))
   }
 }
 
@@ -309,6 +318,7 @@ function fail(io: HeadlessIo, error: unknown, json: boolean): void {
  * @param io - process-facing effects.
  */
 async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> {
+  const messages = diagnosticMessages(resolveCommandLocale(ctx))
   // Loader siblings mount concurrently. Await the complete application before
   // creating an Agent so its scoped tools and adapters are not half-composed.
   await ctx.get('loader')?.await()
@@ -321,14 +331,14 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
   // A Cordis overlay sets the row directly and bypasses the CLI trim check, so
   // the same public setting must fail here rather than become a blank identity.
   if (config.sessionId !== undefined && config.sessionId.trim() === '') {
-    throw new Error('headless-runner: sessionId must not be blank')
+    throw new Error(messages.headlessRunnerSessionIdMustNotBeBlank)
   }
 
   const task = config.task === undefined || config.task === '-'
     ? await internals.readStdin()
     : config.task
   if (task.trim() === '') {
-    throw new Error('a task is required, for example: dsh --profile headless "run the tests"')
+    throw new Error(messages.aTaskIsRequiredForExampleDshProfileHeadless)
   }
 
   const selection = defaultModel.currentSelection()
@@ -357,7 +367,7 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
     // The resume-time check read a snapshot; an overlay can still append a
     // preset selection between it and the interval this run now owns, so
     // re-read the log the runner holds before submitting the task.
-    assertAdoptable(agent.session.header, liveEvents(agent.session), sessionId, cwd)
+    assertAdoptable(agent.session.header, liveEvents(agent.session, messages), sessionId, cwd, messages)
   }
   const firstSeq = agent.session.seq
   const projection = config.json === true ? projectJsonRun(ctx, agent, io.stdout, { cwd }) : undefined
@@ -389,7 +399,7 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
     }
     await sessions.flush(agent.session)
     if (failure !== undefined) throw failure.error
-    const outcome = summarize(agent.session, firstSeq)
+    const outcome = summarize(agent.session, firstSeq, messages)
     if (projection === undefined) io.stdout.write(outcome.text + '\n')
     else projection.finish(outcome.text)
     if (outcome.reason?.kind === 'error') {
@@ -409,11 +419,12 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
  * @param config - validated task and run options.
  */
 export function apply(ctx: Context, config: Config): void {
+  const messages = diagnosticMessages(resolveCommandLocale(ctx))
   // Read through the global service store, not the property proxy: appExit is
   // an optional host value, never an injected dependency.
   const exit = ctx.get('appExit')
   if (exit === undefined) {
-    throw new Error('headless-runner: the launcher must provide ctx.appExit before the tree mounts')
+    throw new Error(messages.headlessRunnerTheLauncherMustProvideCtxAppExitBefore)
   }
   const io: HeadlessIo = { stdout: internals.stdout, stderr: internals.stderr, exit }
   void run(ctx, config, io).catch((error: unknown) => { fail(io, error, config.json === true) })

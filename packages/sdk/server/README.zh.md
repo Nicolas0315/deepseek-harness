@@ -35,6 +35,8 @@ kind: "package-reference"
 
 ### 配置
 
+SDK 自有的固定诊断依次读取并固定 `DSH_LANG`、`LC_ALL`、`LC_MESSAGES`、`LANG`、系统区域设置；`ja` 使用日语，其余语言使用英语。直接使用 `HarnessSdkJsonRpcServer` 的调用方可通过 `language: 'en' | 'ja'` 为每个实例覆盖此选择。协议键、错误代码及数据，以及适配器、Agent 和进程的原始错误保持不变。
+
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `maxTokensAsSuccess` | `false` | 把 max-token 轮次或 subagent 终止报告为成功的 SDK 结果 |

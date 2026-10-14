@@ -1,0 +1,26 @@
+使い方: dsh --profile web [options]
+
+DeepSeek Harness のブラウザー UI を提供します。
+
+オプション:
+  --host <host>                  バインド先: ローカルインターフェースの具体的な IPv4 または IPv6
+                                 アドレス。ワイルドカードは禁止
+  --no-open                      既定のブラウザーで Web UI を開かない
+  --port <port>                  待ち受けポート。0 を指定すると OS が空きポートを選択
+  --public-url <url>             表示、ブラウザー起動、web-surface、DSH_WEB_URL に使用する
+                                 HTTP(S) ルート。信頼の許可にはならない
+  --trusted-host <authority...>  /api のブラウザー信頼検証で追加許可するホスト（host または
+                                 host:port、複数回指定可能）
+  --tls-cert <file>              PEM サーバー証明書チェーン。--tls-key が必要
+  --tls-key <file>               暗号化されていない PEM 秘密鍵。--tls-cert が必要
+  -h, --help                     このヘルプを表示する
+
+使用例:
+  dsh --profile web                          設定されたホストとポートで提供
+  dsh --profile web --no-open                ブラウザーを開かずに提供
+  dsh --profile web --port 8080              別のポートで提供
+  dsh --profile web --host 10.0.0.7          一つのローカルアドレスで接続を受け付ける
+  dsh --profile web --public-url https://app.example/ui/ --trusted-host app.example
+                                             パスの接頭辞を除去する HTTPS プロキシの入口を公開し、そのホストを許可
+  dsh --profile web --tls-cert ./server-chain.pem --tls-key ./server-key.pem
+                                             既存の証明書と秘密鍵で HTTPS を提供

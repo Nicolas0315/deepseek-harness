@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { afterAll, afterEach, describe, expect, it, onTestFinished } from 'vitest'
+import { afterAll, afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Include, { type PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
@@ -331,6 +331,28 @@ describe('Loader entry disabled interpolation', () => {
 })
 
 describe('profile reconciliation settlement', () => {
+  it('keeps unchanged pending entries when the process language changes during reload', async () => {
+    vi.stubEnv('DSH_LANG', 'en')
+    onTestFinished(() => { vi.unstubAllEnvs() })
+    const dir = tmp()
+    writeFileSync(join(dir, 'cordis.yml'), '[]\n')
+    writeFileSync(join(dir, 'pending.mjs'), 'export const inject = ["localeTestMissing"]; export function apply() {}\n')
+    const patches = [{ insert: [{ id: 'pending-locale', name: './pending.mjs' }] }]
+    const ctx = await boot(NAME, join(dir, 'cordis.yml'), patches)
+    onTestFinished(() => ctx.fiber.dispose())
+    const entry = [...ctx.loader.entries()].find(row => row.options.id === 'include')
+    if (entry === undefined) throw new Error('root Include missing')
+    const update = entry.update.bind(entry)
+    const spy = vi.spyOn(entry, 'update').mockImplementation(async (options) => {
+      vi.stubEnv('DSH_LANG', 'ja')
+      return update(options)
+    })
+    onTestFinished(() => { spy.mockRestore() })
+    await expect(reconcileProfilePatches(ctx, patches, NAME)).resolves.toEqual([
+      expect.stringContaining('pending (waiting for service: localeTestMissing)'),
+    ])
+  })
+
   it('retains unchanged import diagnostics across profile reconciliation', async () => {
     const dir = tmp()
     writeFileSync(join(dir, 'cordis.yml'), '[]\n')

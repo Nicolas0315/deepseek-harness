@@ -25,6 +25,8 @@ kind: "package-bundle"
 <a id="use-this-package"></a>
 ## 使用本包
 
+启动帮助、任务校验、推理标题与 Session 接续失败使用[命令行诊断语言](../../boot/cmdline/README.zh.md#parsing-your-flags)。选择 `--json` 时，日语诊断也保留在错误事件内；任务文本与 provider 输出保持不变。
+
 运行一个任务，获得最终答案，然后退出。任务就是命令行参数，省略时则来自 stdin；整条命令就是最小的可运行示例。
 
 ### 运行一次性任务

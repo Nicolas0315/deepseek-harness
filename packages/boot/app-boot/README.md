@@ -25,6 +25,8 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+Profile validation, compatibility reports, and startup audit headings use the [command-line diagnostic language](../cmdline/README.md#parsing-your-flags). Startup failures retain the original plugin errors and structured activation metadata. Profile, patch, compatibility, and metadata helpers accept an optional diagnostic locale; callers with a captured launch preference pass it through nested reads. Reload captures one catalog before awaiting changes, so a process-locale change cannot turn an unchanged pending entry into a new failure.
+
 Starting an app with this package is a small, explicit entry point: you give it a config file and it runs the whole boot. This section covers what you can do and what you get; the helper calls behind each outcome are documented in the folded implementation section.
 
 ### When to use it

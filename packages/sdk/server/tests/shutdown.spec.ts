@@ -25,7 +25,7 @@ async function setup() {
   const server = new HarnessSdkJsonRpcServer(ctx, {
     request: () => Promise.reject(new Error('the server must not request the client')),
     notify: () => {},
-  })
+  }, { language: 'en' })
   await server.initialize({ cwd: process.cwd(), provider: 'mock', model: 'mock' })
   return { ctx, server }
 }

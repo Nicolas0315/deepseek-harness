@@ -433,7 +433,8 @@ describe('installFailLoud', () => {
     installFailLoud(NAME, proc)
     const error = new Error('assembled activation failure')
     const warn = vi.fn()
-    const audit = auditStartupEntries({
+    const audit = auditStartupEntries(Object.defineProperties(new Context(), Object.getOwnPropertyDescriptors({
+      get: () => undefined,
       loader: {
         entries: () => ['broken-a', 'broken-b'].map(name => ({
           options: { id: name, name },
@@ -445,7 +446,7 @@ describe('installFailLoud', () => {
           },
         })),
       },
-    } as unknown as Context, NAME, warn)
+    })), NAME, warn)
     await Promise.resolve()
     await Promise.resolve()
     proc.rejection(error)
@@ -577,9 +578,10 @@ describe('auditStartupEntries', () => {
     options: { id: string; name: string }
   }
 
-  const ctxWith = (entries: FakeEntry[]): Context => ({
+  const ctxWith = (entries: FakeEntry[]): Context => Object.defineProperties(new Context(), Object.getOwnPropertyDescriptors({
+    get: () => undefined,
     loader: { entries: () => entries.values() },
-  }) as unknown as Context
+  }))
 
   const fiber = (
     state: number,

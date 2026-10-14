@@ -8,7 +8,7 @@
  * anything else is shown but refuses to open. The header uses the shared
  * PathLabel for the root, followed by reload and workspace directory actions.
  */
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import type { RemoteFailure } from '@deepseek-ai/dsh-api-remotes/client'
@@ -35,17 +35,15 @@ export type FilesBodyProps =
   & FilesInjected
   & PropsLocale<'sidebarFiles'>
 
-/** Natural, case-insensitive name order, so `file2` precedes `file10`. */
-const byName = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
-
 /**
  * Order one level's entries for display: directories first, then everything
  * else, each group by name. The endpoint's order is a listing fact; this is the
  * reader's.
  * @param entries - the listing as the endpoint returned it.
+ * @param byName - name collation for the selected UI language.
  * @returns a new array, directories first, then by name within each group.
  */
-export function orderEntries(entries: readonly WorkspaceDirectoryEntry[]): WorkspaceDirectoryEntry[] {
+export function orderEntries(entries: readonly WorkspaceDirectoryEntry[], byName: Intl.Collator): WorkspaceDirectoryEntry[] {
   return [...entries].sort((left, right) => {
     const group = Number(right.type === 'directory') - Number(left.type === 'directory')
     return group !== 0 ? group : byName.compare(left.name, right.name)
@@ -71,6 +69,7 @@ export function failureLine(t: TranslateNS<'sidebarFiles'>, failure: RemoteFailu
 
 /** What every level shares: the tab's tree and the two gestures. */
 interface TreeContext {
+  readonly byName: Intl.Collator
   readonly state: FilesTabState
   readonly onToggle: (parent: string, path: string) => void
   readonly onOpen: (path: string) => void
@@ -125,7 +124,7 @@ function Level({ path, tree }: { path: string; tree: TreeContext }): ReactNode {
       </li>
     )
   }
-  const entries = orderEntries(level.level.entries)
+  const entries = orderEntries(level.level.entries, tree.byName)
   return (
     <>
       {level.failure !== undefined && <li className={css.note} data-files-row="failed">{failureLine(t, level.failure)}</li>}
@@ -141,6 +140,8 @@ export function FilesBody({
   useTabInfo, sessionId, useSessions, useStore, actions,
   start, refresh, setAutoRefresh, toggle, t, renderSlot,
 }: FilesBodyProps): ReactNode {
+  const sortLocale = t('sort.locale')
+  const byName = useMemo(() => new Intl.Collator(sortLocale, { numeric: true, sensitivity: 'base' }), [sortLocale])
   const { tab } = useTabInfo()
   useEffect(() => tab.actions.bindCommands({ refresh: () => { refresh(tab.id) } }), [tab.actions, tab.id, refresh])
   const { signal, actions: tabActions } = tab
@@ -181,6 +182,7 @@ export function FilesBody({
   }
   if (state === undefined) return null
   const tree: TreeContext = {
+    byName,
     state,
     onToggle: (parent, path) => { toggle(tab.id, parent, path, state.expanded, signal) },
     // Every row is under the tree's root, so its address is session-relative.

@@ -4,7 +4,7 @@ Var InstallerEditFrameBitmap
 
 !macro InstallerPixelFont HANDLE SIZE WEIGHT
     System::Call 'kernel32::MulDiv(i -${SIZE}, i $InstallerDpi, i 96) i.r0'
-    System::Call 'gdi32::CreateFontW(i r0, i 0, i 0, i 0, i ${WEIGHT}, i 0, i 0, i 0, i 1, i 0, i 0, i 5, i 0, w "${INSTALLER_FONT}") p.s'
+    System::Call 'gdi32::CreateFontW(i r0, i 0, i 0, i 0, i ${WEIGHT}, i 0, i 0, i 0, i 1, i 0, i 0, i 5, i 0, w "$(INSTALLER_FONT_FACE)") p.s'
     Pop ${HANDLE}
 !macroend
 

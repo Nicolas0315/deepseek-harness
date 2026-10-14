@@ -1102,7 +1102,7 @@ for line in sys.stdin:
     module_dir.mkdir()
     (module_dir / "__init__.py").write_text(
         f"""
-def resolve_bundled_launch_args(mode=None):
+def resolve_bundled_launch_args(mode=None, *, language=None, env=None):
     return ({sys.executable!r}, {str(runtime)!r})
 """.strip()
     )

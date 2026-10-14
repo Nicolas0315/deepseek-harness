@@ -8,6 +8,13 @@ const MIRROR = 'https://registry.npmmirror.com/'
 const CORP = 'https://npm.corp.example/'
 
 describe('normalizeRegistry', () => {
+  it('uses an explicit Japanese diagnostic without consulting a Host environment', () => {
+    expect(() => normalizeRegistry('日本語://registry', 'ja')).toThrow('レジストリは HTTP(S) URL にしてください: 日本語://registry')
+    expect(() => normalizeRegistry('日本語://registry')).toThrow('a registry must be an http(s) URL: 日本語://registry')
+    expect(() => registryPlan('invalid', { registry: null, fallbackRegistries: [], resolved: null }, 'ja'))
+      .toThrow('レジストリは HTTP(S) URL にしてください: invalid')
+  })
+
   it('parses an http(s) URL into pnpm\'s comparison form: lower-case host, trailing slash', () => {
     expect(normalizeRegistry('https://REGISTRY.npmmirror.com')).toBe(MIRROR)
     expect(normalizeRegistry('http://npm.corp.example:4873/prefix')).toBe('http://npm.corp.example:4873/prefix/')

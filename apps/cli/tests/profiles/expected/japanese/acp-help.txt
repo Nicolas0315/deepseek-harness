@@ -1,0 +1,9 @@
+使い方: dsh --profile acp [options]
+
+標準入出力の Agent Client Protocol 経由で自動化クライアントに接続を提供します。
+
+オプション:
+  -h, --help  このヘルプを表示する
+
+使用例:
+  dsh --profile acp     クライアントの切断まで ACP を提供

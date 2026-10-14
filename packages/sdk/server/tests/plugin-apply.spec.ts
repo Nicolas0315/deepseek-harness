@@ -15,6 +15,7 @@ import { LlmAdapter } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import * as jsonrpc from '../src/index.ts'
+import * as serverDiagnostics from '../src/diagnostics.ts'
 
 /**
  * Mount the real namespace plugin with in-memory stdio and exit hooks. Covers
@@ -121,11 +122,13 @@ async function mountPlugin(
   const exit = (code: number): void => { events.push({ kind: 'exit', code }) }
 
   ctx.effect(() => () => { events.push({ kind: 'root-disposed' }) }, 'jsonrpc test root-disposal witness')
-  const fiber = await ctx.plugin(jsonrpc, {
-    input,
-    output,
-    exit,
-  })
+  const language = vi.spyOn(serverDiagnostics, 'defaultDiagnosticLocale').mockReturnValue('en')
+  let fiber: Awaited<ReturnType<Context['plugin']>>
+  try {
+    fiber = await ctx.plugin(jsonrpc, { input, output, exit })
+  } finally {
+    language.mockRestore()
+  }
 
   const frames = (): Record<string, unknown>[] =>
     events.flatMap(event => event.kind === 'frame' ? [event.frame] : [])

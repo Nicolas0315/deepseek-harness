@@ -1,10 +1,13 @@
 import { createHash } from 'node:crypto'
 import { afterEach, expect, it, vi } from 'vitest'
 import { Context, Service } from '@deepseek-ai/cordis'
-import { mkdtemp, rm, readFile } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { createServer as createTcpServer, connect, Socket } from 'node:net'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import Loader from '@deepseek-ai/cordis-plugin-loader'
+import Include from '@deepseek-ai/cordis-plugin-include'
 import { createServer, IncomingMessage, ServerResponse } from 'node:http'
 import WebServer from '@deepseek-ai/dsh-host-webserver'
 import AuthorizationService from '@deepseek-ai/dsh-authorization'
@@ -35,6 +38,7 @@ async function fixture(
   embeddedPageDist = '',
   desktopPlatform: 'darwin' | 'win32' | null = null,
   balanceTimeoutMs = 30_000,
+  loaderAccount = false,
 ) {
   const home = await mkdtemp(join(tmpdir(), 'dsh-account-'))
   cleanups.push(() => rm(home, { recursive: true, force: true }))
@@ -157,13 +161,30 @@ async function fixture(
   const authorization = ctx.plugin(AuthorizationService)
   await authorization
   await beforeAccount?.(ctx, origin)
-  const provider = ctx.plugin(PlatformAccount, {
+  const config = {
     platformOrigin: origin, inferenceOrigin, embeddedPageDist, desktopPlatform,
     allowLoopbackHttp: true, requestHeaders, accountRequestHeaders,
     rewriteBrowserOrigin, logoutRetryDelayMs: 1, balanceTimeoutMs,
-  })
-  await provider
-  cleanups.push(async () => { await provider.dispose(); await authorization.dispose(); await credentials.dispose(); await web.dispose() })
+  }
+  let disposeAccount = () => ctx.fiber.dispose()
+  cleanups.push(async () => { await disposeAccount(); await authorization.dispose(); await credentials.dispose(); await web.dispose() })
+  if (loaderAccount) {
+    const configPath = join(home, 'cordis.yml')
+    await writeFile(configPath, JSON.stringify([{ id: 'account', name: 'cordis:account', config }]))
+    ctx.baseUrl = pathToFileURL(home).href + '/'
+    await ctx.plugin(Loader)
+    ctx.loader.builtins.include = Include
+    ctx.loader.builtins.account = PlatformAccount
+    await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configPath).href } })
+    await ctx.loader.await()
+    const accounts = [...ctx.loader.entries()].filter(entry => entry.options.name === 'cordis:account')
+    expect(accounts).toHaveLength(1)
+    expect(accounts[0]!.fiber).toBeDefined()
+  } else {
+    const provider = ctx.plugin(PlatformAccount, config)
+    await provider
+    disposeAccount = () => provider.dispose()
+  }
   const account = ctx.deepseekAccount as PlatformAccount
   const states = new AbortController()
   cleanups.push(async () => { states.abort() })
@@ -183,7 +204,7 @@ async function fixture(
     holdDetails: () => { detailsHold = true }, failSummary: () => { summaryFailed = true },
     invalidateSummary: () => { normalWallets = [{ currency: 'CNY', balance: 'not-a-decimal' }] },
     normalWallets: (value: unknown) => { normalWallets = value },
-    dispose: () => provider.dispose(), exchanged, release,
+    dispose: disposeAccount, exchanged, release,
     redirect: () => { redirect = true },
     hold: () => { hold = true },
     initResponse: (value: Record<string, unknown>) => { initOverride = value },
@@ -591,6 +612,34 @@ it('does not forward deployment cookies through a Platform redirect', async () =
   await f.account.startSignIn(clientMetadata(), f.callbackOrigin, 'desktop')
   await f.wait('failed')
   expect(f.receivedHeaders.map(item => item.path)).toEqual(['/auth-api/v0/dsh/auth_init'])
+})
+
+it.each([
+  { locale: 'en', lang: 'en', wireLocale: 'en_US', message: 'Sign-in failed. Close this tab and try again in the original tab.' },
+  { locale: 'zh-CN', lang: 'zh-CN', wireLocale: 'zh_CN', message: '登录失败，请关闭此标签页并在原页面重试。' },
+  { locale: 'ja-JP', lang: 'ja', wireLocale: 'en_US', message: 'ログインに失敗しました。このタブを閉じ、元のタブで再試行してください。' },
+  { locale: 'ja', lang: 'ja', wireLocale: 'en_US', message: 'ログインに失敗しました。このタブを閉じ、元のタブで再試行してください。' },
+])('captures $locale for the failed callback while keeping Platform locale $wireLocale', async ({ locale, lang, wireLocale, message }) => {
+  const f = await fixture(undefined, {}, false, {}, undefined, undefined, '', null, undefined, true)
+  await f.account.startSignIn(clientMetadata(locale), f.callbackOrigin, 'web')
+  const first = await f.wait('waiting-browser')
+  const joined = await f.account.startSignIn(clientMetadata(locale === 'zh-CN' ? 'en' : 'zh-CN'), f.callbackOrigin, 'web')
+  expect(joined.attempt?.id).toBe(first.attempt?.id)
+  expect(f.init().locale).toBe(wireLocale)
+  f.fail(17)
+  const response = await fetch(f.callback(), { redirect: 'manual' })
+  expect(response.status).toBe(200)
+  const page = await response.text()
+  const nonce = /nonce="([^"]+)"/.exec(page)![1]
+  expect(page).toBe(`<!doctype html><html lang="${lang}"><meta charset="utf-8"><title>${message}</title>`
+    + `<body><p>${message}</p><script nonce="${nonce}">window.close()</script></body></html>`)
+  expect(response.headers.get('content-security-policy')).toContain(`script-src 'nonce-${nonce}'`)
+  expect(f.receivedHeaders.map(header => [header.path, header.locale])).toEqual([
+    ['/auth-api/v0/dsh/auth_init', wireLocale], ['/auth-api/v0/dsh/auth_exchange', wireLocale],
+  ])
+  if (lang === 'ja') await expect(`${page.match(/<p>(.*?)<\/p>/)![1]}\n`)
+    .toMatchFileSnapshot('./expected/web-exchange-failure-ja.txt')
+  expect((await f.wait('failed')).attempt).toMatchObject({ errorCode: 'protocol' })
 })
 
 it('closes the failed Web authorization tab without redirecting and keeps the shared HTTP server alive', async () => {

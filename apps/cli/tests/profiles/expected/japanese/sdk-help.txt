@@ -1,0 +1,9 @@
+使い方: dsh --profile sdk [options]
+
+標準入出力の JSON-RPC 経由で DeepSeek Harness SDK クライアントに接続を提供します。
+
+オプション:
+  -h, --help  このヘルプを表示する
+
+使用例:
+  dsh --profile sdk     クライアントの切断まで SDK 実行環境を提供

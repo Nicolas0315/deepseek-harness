@@ -105,7 +105,7 @@ describe('disposeRuntimeProcess', () => {
 
   it('tier 2: a child that ignores EOF but honors SIGTERM dies on the middle rung', async () => {
     const fake = new FakeChild({ diesOn: 'SIGTERM', delayMs: 5 })
-    await disposeRuntimeProcess(asChild(fake), { disposeEofGraceMs: 20, disposeGraceMs: 1000 }, 'linux')
+    await disposeRuntimeProcess(asChild(fake), { disposeEofGraceMs: 20, disposeGraceMs: 1000 }, 'linux', 'en')
     expect(fake.stdinEnded).toBe(true)
     expect(fake.kills).toEqual(['SIGTERM'])
     expect(fake.signalCode).toBe('SIGTERM')
@@ -114,7 +114,7 @@ describe('disposeRuntimeProcess', () => {
 
   it('recognizes a child that exits synchronously on SIGTERM', async () => {
     const fake = new FakeChild({ diesOn: 'SIGTERM', synchronousExit: true })
-    await disposeRuntimeProcess(asChild(fake), { disposeEofGraceMs: 20, disposeGraceMs: 1000 }, 'linux')
+    await disposeRuntimeProcess(asChild(fake), { disposeEofGraceMs: 20, disposeGraceMs: 1000 }, 'linux', 'en')
     expect(fake.kills).toEqual(['SIGTERM'])
     expect(fake.signalCode).toBe('SIGTERM')
     expect(fake.listenerCount('exit')).toBe(0)
@@ -122,7 +122,7 @@ describe('disposeRuntimeProcess', () => {
 
   it('tier 3: a SIGTERM-trapping child is SIGKILLed, and dispose resolves only after the exit', async () => {
     const fake = new FakeChild({ delayMs: 5 }) // only SIGKILL fells it
-    await disposeRuntimeProcess(asChild(fake), { disposeEofGraceMs: 20, disposeGraceMs: 20 }, 'linux')
+    await disposeRuntimeProcess(asChild(fake), { disposeEofGraceMs: 20, disposeGraceMs: 20 }, 'linux', 'en')
     expect(fake.kills).toEqual(['SIGTERM', 'SIGKILL'])
     // Quiescence, not a request: at resolution the child has ACTUALLY exited
     // (the exit event landed, despite the scripted post-SIGKILL delay).
@@ -131,7 +131,7 @@ describe('disposeRuntimeProcess', () => {
 
   it('recognizes a child already gone when the final exit wait begins', async () => {
     const fake = new FakeChild({ synchronousExit: true })
-    await disposeRuntimeProcess(asChild(fake), { disposeEofGraceMs: 20, disposeGraceMs: 20 }, 'linux')
+    await disposeRuntimeProcess(asChild(fake), { disposeEofGraceMs: 20, disposeGraceMs: 20 }, 'linux', 'en')
     expect(fake.kills).toEqual(['SIGTERM', 'SIGKILL'])
     expect(fake.signalCode).toBe('SIGKILL')
   })
@@ -147,19 +147,19 @@ describe('disposeRuntimeProcess', () => {
       return true
     })
 
-    await disposeRuntimeProcess(asChild(fake), { disposeEofGraceMs: 1, disposeGraceMs: 10 }, 'linux')
+    await disposeRuntimeProcess(asChild(fake), { disposeEofGraceMs: 1, disposeGraceMs: 10 }, 'linux', 'en')
     expect(fake.kills).toEqual(['SIGTERM'])
   })
 
   it('walks the ladder for a child spawned without a stdin pipe', async () => {
     const fake = new FakeChild({ stdin: false, diesOn: 'SIGTERM', delayMs: 5 })
-    await disposeRuntimeProcess(asChild(fake), { disposeEofGraceMs: 20, disposeGraceMs: 1000 }, 'linux')
+    await disposeRuntimeProcess(asChild(fake), { disposeEofGraceMs: 20, disposeGraceMs: 1000 }, 'linux', 'en')
     expect(fake.kills).toEqual(['SIGTERM'])
   })
 
   it('skips the redundant SIGTERM tier on Windows and awaits forced exit', async () => {
     const fake = new FakeChild({ diesOn: 'SIGTERM', delayMs: 5 })
-    await disposeRuntimeProcess(asChild(fake), { disposeEofGraceMs: 20, disposeGraceMs: 1000 }, 'win32')
+    await disposeRuntimeProcess(asChild(fake), { disposeEofGraceMs: 20, disposeGraceMs: 1000 }, 'win32', 'en')
     expect(fake.kills).toEqual(['SIGKILL'])
     expect(fake.signalCode).toBe('SIGKILL')
   })
@@ -177,13 +177,14 @@ describe('disposeRuntimeProcess', () => {
       asChild(fake),
       { disposeEofGraceMs: 1, disposeGraceMs: 1000 },
       'win32',
+      'en',
     )).rejects.toBe(failure)
     expect(fake.kills).toEqual(['SIGKILL'])
     expect(fake.listenerCount('error')).toBe(0)
     expect(fake.listenerCount('exit')).toBe(0)
   })
 
-  it('wraps a synchronous forced-termination exception and removes its listeners', async () => {
+  it.each(['en', 'ja'] as const)('wraps a synchronous forced-termination exception and removes its listeners (%s)', async (language) => {
     const fake = new FakeChild()
     const failure = new Error('invalid signal state')
     vi.spyOn(fake, 'kill').mockImplementation(() => { throw failure })
@@ -192,12 +193,13 @@ describe('disposeRuntimeProcess', () => {
       asChild(fake),
       { disposeEofGraceMs: 1, disposeGraceMs: 1000 },
       'win32',
-    )).rejects.toMatchObject({ message: 'SIGKILL failed', cause: failure })
+      language,
+    )).rejects.toMatchObject({ message: language === 'ja' ? 'SIGKILL が失敗しました' : 'SIGKILL failed', cause: failure })
     expect(fake.listenerCount('error')).toBe(0)
     expect(fake.listenerCount('exit')).toBe(0)
   })
 
-  it('bounds a refused forced termination that produces no error or exit', async () => {
+  it.each(['en', 'ja'] as const)('bounds a refused forced termination that produces no error or exit (%s)', async (language) => {
     const fake = new FakeChild()
     vi.spyOn(fake, 'kill').mockImplementation((signal) => {
       fake.kills.push(signal)
@@ -208,12 +210,13 @@ describe('disposeRuntimeProcess', () => {
       asChild(fake),
       { disposeEofGraceMs: 1, disposeGraceMs: 10 },
       'win32',
-    )).rejects.toThrow('runtime process did not exit within 10ms after SIGKILL was refused')
+      language,
+    )).rejects.toThrow(language === 'ja' ? 'SIGKILL が拒否されてから 10ms 以内にランタイムプロセスが終了しませんでした' : 'runtime process did not exit within 10ms after SIGKILL was refused')
     expect(fake.listenerCount('error')).toBe(0)
     expect(fake.listenerCount('exit')).toBe(0)
   })
 
-  it('bounds an accepted forced termination that never reports exit', async () => {
+  it.each(['en', 'ja'] as const)('bounds an accepted forced termination that never reports exit (%s)', async (language) => {
     const fake = new FakeChild()
     vi.spyOn(fake, 'kill').mockImplementation((signal) => {
       fake.kills.push(signal)
@@ -224,7 +227,8 @@ describe('disposeRuntimeProcess', () => {
       asChild(fake),
       { disposeEofGraceMs: 1, disposeGraceMs: 10 },
       'win32',
-    )).rejects.toThrow('runtime process did not exit within 10ms after SIGKILL was accepted')
+      language,
+    )).rejects.toThrow(language === 'ja' ? 'SIGKILL が受理されてから 10ms 以内にランタイムプロセスが終了しませんでした' : 'runtime process did not exit within 10ms after SIGKILL was accepted')
     expect(fake.listenerCount('error')).toBe(0)
     expect(fake.listenerCount('exit')).toBe(0)
   })

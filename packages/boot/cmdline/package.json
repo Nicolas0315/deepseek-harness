@@ -35,5 +35,9 @@
     "@deepseek-ai/cordis-plugin-loader": "workspace:~",
     "commander": "^15.0.0",
     "@deepseek-ai/cordis": "workspace:~"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-diagnostic-locale": "workspace:*",
+    "@deepseek-ai/dsh-launch-environment": "workspace:*"
   }
 }

@@ -8,6 +8,8 @@
  * @module @deepseek-ai/dsh-sdk-client/dispose
  */
 
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
+import { diagnostics, defaultDiagnosticLocale } from './diagnostics.ts'
 import type { ChildProcess } from 'node:child_process'
 
 /**
@@ -32,7 +34,7 @@ function exitsWithin(child: ChildProcess, ms: number): Promise<boolean> {
 }
 
 /** Force-terminate the runtime and reject if no exit edge arrives within the grace. */
-function forceTerminateWithin(child: ChildProcess, ms: number): Promise<void> {
+function forceTerminateWithin(child: ChildProcess, ms: number, language: DiagnosticLocale): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve()
   return new Promise<void>((resolve, reject) => {
     let accepted = false
@@ -53,16 +55,15 @@ function forceTerminateWithin(child: ChildProcess, ms: number): Promise<void> {
     child.once('exit', onExit)
     child.once('error', onError)
     const timer = setTimeout(() => {
-      const disposition = accepted ? 'accepted' : 'refused'
       settle(() => {
-        reject(new Error(`runtime process did not exit within ${ms}ms after SIGKILL was ${disposition}`))
+        reject(new Error(diagnostics[language].killTimeout(ms, accepted)))
       })
     }, ms).unref()
     try {
       accepted = child.kill('SIGKILL')
       if (child.exitCode !== null || child.signalCode !== null) settle(resolve)
     } catch (error: unknown) {
-      settle(() => { reject(new Error('SIGKILL failed', { cause: error })) })
+      settle(() => { reject(new Error(diagnostics[language].killFailed(), { cause: error })) })
     }
   })
 }
@@ -76,6 +77,7 @@ function forceTerminateWithin(child: ChildProcess, ms: number): Promise<void> {
  * @param child - the runtime child process to tear down.
  * @param graces - the EOF and termination-confirmation windows (ms).
  * @param platform - the host platform, injectable for unit coverage.
+ * @param language - diagnostic language captured by the owning client.
  * @throws When forced termination errors or the child does not report exit
  * within `disposeGraceMs`.
  */
@@ -83,6 +85,7 @@ export async function disposeRuntimeProcess(
   child: ChildProcess,
   graces: { disposeEofGraceMs: number; disposeGraceMs: number },
   platform: NodeJS.Platform = process.platform,
+  language: DiagnosticLocale = defaultDiagnosticLocale(),
 ): Promise<void> {
   // Already gone: nothing to reap.
   if (child.exitCode !== null || child.signalCode !== null) return
@@ -95,5 +98,5 @@ export async function disposeRuntimeProcess(
     if (await exitsWithin(child, graces.disposeGraceMs)) return
   }
   // 3. Force-kill and await a bounded exit edge.
-  await forceTerminateWithin(child, graces.disposeGraceMs)
+  await forceTerminateWithin(child, graces.disposeGraceMs, language)
 }

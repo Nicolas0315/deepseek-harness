@@ -6,6 +6,8 @@
 
 ## 入口模式
 
+启动器帮助、参数错误、profile 准备、插件报告与启动诊断使用[命令行诊断语言](../../packages/boot/cmdline/README.zh.md#parsing-your-flags)。配置导出保留其机器可读结构。
+
 | 命令 | 用途 |
 |---|---|
 | `dsh <name>` / `dsh --profile <name>` | 启动位于 `$DSH_HOME/profiles/<name>` 的指定 profile。 |

@@ -29,6 +29,8 @@ kind: "package-bundle"
 <a id="use-this-package"></a>
 ## 使用本包
 
+启动帮助、选项校验、公开 URL 校验、暴露警告与浏览器启动报告使用[命令行诊断语言](../../boot/cmdline/README.zh.md#parsing-your-flags)。面向模型的 Web 使用说明不受此终端语言影响。
+
 启动 GUI、打开浏览器，然后开始与 agent（智能体）对话。flag 用于微调本次调用。
 
 ### 启动 Web GUI

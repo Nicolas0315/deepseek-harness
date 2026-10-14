@@ -6,9 +6,10 @@
  * @module @deepseek-ai/dsh-headless/startup
  */
 
+import { diagnosticMessages } from './diagnostics.ts'
 import { Command, CommanderError } from 'commander'
 import type { Context } from '@deepseek-ai/cordis'
-import { parseCmdline } from '@deepseek-ai/dsh-cmdline'
+import { parseCmdline, resolveCommandLocale } from '@deepseek-ai/dsh-cmdline'
 import { boundJsonLine } from './json-stream.ts'
 import { internals } from './startup-internals.ts'
 
@@ -35,21 +36,15 @@ export interface HeadlessStartupValues {
  * This app's command: the task positional, its options, and its help text.
  * @returns a fresh program, so one process can parse more than once (tests).
  */
-function headlessCommand(): Command {
+function headlessCommand(messages: ReturnType<typeof diagnosticMessages>): Command {
   return new Command()
     .name('dsh --profile headless')
-    .description('Answer one task and exit; the answer goes to stdout and diagnostics to stderr.')
-    .helpOption('-h, --help', 'show this help')
-    .option('--json', 'write newline-delimited run events to stdout instead of the final message')
-    .option('--session-id <id>', 'adopt the persisted Session with this id; an unknown id is an error')
-    .argument('[task...]', 'the task text; multiple words are joined by spaces, and `-` reads stdin')
-    .addHelpText('after', `
-Examples:
-  dsh --profile headless "run the tests"          answer one task and exit
-  echo "run the tests" | dsh --profile headless   read the task from stdin
-  dsh --profile headless --json "run the tests"   emit machine-readable run events
-  dsh --profile headless --session-id session-… "continue"   resume an existing Session
-`)
+    .description(messages.answerOneTaskAndExitTheAnswerGoesTo)
+    .helpOption('-h, --help', messages.showThisHelp)
+    .option('--json', messages.writeNewlineDelimitedRunEventsToStdoutInsteadOf)
+    .option('--session-id <id>', messages.adoptThePersistedSessionWithThisIdAnUnknown)
+    .argument('[task...]', messages.theTaskTextMultipleWordsAreJoinedBySpaces)
+    .addHelpText('after', messages.examplesDshProfileHeadlessRunTheTestsAnswerOne)
 }
 
 /**
@@ -76,7 +71,8 @@ function jsonRequested(argv: readonly string[]): boolean {
  * @param ctx - plugin context carrying the command line.
  */
 export function apply(ctx: Context): void {
-  const program = headlessCommand()
+  const messages = diagnosticMessages(resolveCommandLocale(ctx))
+  const program = headlessCommand(messages)
   // The raw snapshot decides the JSON contract: Commander rejects a grammar
   // error (an unknown option, a missing option value) before the action runs,
   // and such a rejection still owes a --json caller the error event.
@@ -94,22 +90,22 @@ export function apply(ctx: Context): void {
   }
   program.action(() => {
     if (program.args.length > 1 && program.args.includes('-')) {
-      program.error('error: `-` must be the only task argument')
+      program.error(messages.errorMustBeTheOnlyTaskArgument)
     }
     const joined = program.args.join(' ')
     if (program.args.length > 0 && joined.trim() === '') {
-      program.error('error: a task is required, for example: dsh --profile headless "run the tests"')
+      program.error(messages.errorATaskIsRequiredForExampleDshProfile)
     }
     const task = program.args.length === 0 ? undefined : joined
     if (task === undefined && internals.stdinIsTty()) {
-      program.error('error: a task is required, for example: dsh --profile headless "run the tests"')
+      program.error(messages.errorATaskIsRequiredForExampleDshProfile)
     }
     const options = program.opts<{ json?: boolean; sessionId?: string }>()
     // A SessionId is opaque, so whitespace is part of the identity: validate
     // emptiness on the trimmed value but hand the runner the exact string.
     const sessionId = options.sessionId
     if (sessionId !== undefined && sessionId.trim() === '') {
-      program.error('error: --session-id requires a non-empty session id')
+      program.error(messages.errorSessionIdRequiresANonEmptySessionId)
     }
     ctx.provide(HEADLESS_STARTUP_SERVICE, {
       task,

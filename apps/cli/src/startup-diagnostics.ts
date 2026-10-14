@@ -1,5 +1,7 @@
 /** Save original startup diagnostics while keeping the terminal report concise. */
 
+import { diagnosticMessages } from './diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import { randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -11,6 +13,7 @@ interface StartupDiagnosticContext {
   home: string
   version: string
   profile: string
+  locale?: DiagnosticLocale
 }
 
 /** Wait for stderr to finish the write before the failed process exits. */
@@ -36,8 +39,9 @@ export async function reportStartupFailure(
   context: StartupDiagnosticContext,
   write: (text: string) => void | Promise<void> = writeStderr,
 ): Promise<void> {
+  const messages = diagnosticMessages(context.locale)
   const now = new Date().toISOString()
-  const report = 'WARNING: Raw diagnostics may contain configuration or credential values from plugin errors. Review before sharing.\n\n' + inspect({
+  const report = messages.diagnosticWarning + inspect({
     timestamp: now,
     dshVersion: context.version,
     nodeVersion: process.version,
@@ -61,8 +65,8 @@ export async function reportStartupFailure(
     await mkdir(logDir, { recursive: true, mode: 0o700 })
     await writeFile(logPath, report, { flag: 'wx', mode: 0o600 })
   } catch (writeError) {
-    await write(`\ndsh: warning: could not write startup diagnostics: ${String(writeError)}\nFull diagnostics:\n${report}`)
+    await write(messages.diagnosticSaveFailed(String(writeError), report))
     return
   }
-  await write(`\nFull diagnostics: ${logPath}\n`)
+  await write(messages.diagnosticSaved(logPath))
 }

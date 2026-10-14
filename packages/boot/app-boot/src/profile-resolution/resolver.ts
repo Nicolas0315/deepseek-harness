@@ -1,5 +1,7 @@
 /** In-memory profile package routing for Node's default ESM and CommonJS loaders. */
 
+import { diagnosticMessages, defaultDiagnosticLocale } from '../diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { createRequire, isBuiltin } from 'node:module'
 import { basename, dirname, join, resolve, sep } from 'node:path'
@@ -368,16 +370,20 @@ class ResolutionRouter {
   private current: CompiledResolution
   private readonly linkedTargets: Map<string, string>
 
-  constructor(resolution: RuntimeResolution, private readonly nodeModulePaths: (directory: string) => string[]) {
+  constructor(
+    resolution: RuntimeResolution, private readonly nodeModulePaths: (directory: string) => string[],
+    private readonly locale: DiagnosticLocale,
+  ) {
     this.current = compileResolution(resolution)
     this.linkedTargets = new Map(resolution.linkedRoots.map(root => [root.name, root.realPath]))
   }
 
   replace(successor: RuntimeResolution): void {
+    const messages = diagnosticMessages(this.locale)
     const entries = new Map(successor.entries.map(entry => [entry.name, entry]))
     if (successor.profilesDir !== this.current.profilesDir
       || successor.profileDir !== this.current.profileDir) {
-      throw new Error('profile resolution: a successor cannot change its profile scope')
+      throw new Error(messages.profileResolutionASuccessorCannotChangeItsProfileScope)
     }
     for (const [name, current] of this.current.entries) {
       const next = entries.get(name)
@@ -387,20 +393,20 @@ class ResolutionRouter {
         || (current.scope === 'installation' && !sameResolution(current.declarer, next.declarer))
         || current.version !== next.version
         || current.scope !== next.scope) {
-        throw new Error(`profile resolution: replacing ${JSON.stringify(name)} requires a process restart`)
+        throw new Error(messages.profileResolutionReplacingRequiresAProcessRestart(JSON.stringify(name)))
       }
     }
     const localPackageNames = new Set(successor.localPackageNames)
     for (const name of localPackageNames) {
       if (!this.current.localPackageNames.has(name) && this.current.entries.has(name)) {
-        throw new Error(`profile resolution: overriding ${JSON.stringify(name)} locally requires a process restart`)
+        throw new Error(messages.profileResolutionOverridingLocallyRequiresAProcessRestart(JSON.stringify(name)))
       }
     }
     // Node retains realpath caches after a root leaves the interception scope.
     for (const root of successor.linkedRoots) {
       const previous = this.linkedTargets.get(root.name)
       if (previous !== undefined && !sameResolution(previous, root.realPath)) {
-        throw new Error(`profile resolution: relinking ${JSON.stringify(root.name)} requires a process restart`)
+        throw new Error(messages.profileResolutionRelinkingRequiresAProcessRestart(JSON.stringify(root.name)))
       }
     }
     const next = compileResolution(successor)
@@ -609,7 +615,8 @@ class ResolutionRouter {
   }
 }
 
-function internalModules(): InternalModules {
+function internalModules(locale: DiagnosticLocale): InternalModules {
+  const messages = diagnosticMessages(locale)
   const require = createRequire(import.meta.url)
   const addon = require('node-addon-require-builtin') as { requireBuiltin(moduleId: string): unknown }
   const esmModule = addon.requireBuiltin('internal/modules/esm/loader') as {
@@ -638,7 +645,7 @@ function internalModules(): InternalModules {
     || typeof cjsHelpers.getCjsConditions !== 'function'
     || typeof esmUtils.getDefaultConditions !== 'function'
     || typeof esmResolve.defaultResolve !== 'function') {
-    throw new Error('profile resolution: unsupported Node module loader')
+    throw new Error(messages.profileResolutionUnsupportedNodeModuleLoader)
   }
   /* v8 ignore stop */
   return {
@@ -703,13 +710,15 @@ function throwWithoutCjsAnchor(error: unknown, anchor: string): never {
 /**
  * Install one runtime resolution as the interception on Node's default ESM and CommonJS resolvers.
  * @param resolution - complete package table and profile scope.
+ * @param locale - captured language for installation and successor diagnostics.
  * @returns an interception that publishes a successor or restores the native methods.
  */
 export function installRuntimeInterception(
   resolution: RuntimeResolution,
+  locale: DiagnosticLocale = defaultDiagnosticLocale(),
 ): RuntimeInterception {
-  const { esm, esmDefaultResolve, esmConditions, cjs, cjsConditions, modern } = internalModules()
-  const router = new ResolutionRouter(resolution, directory => cjs._nodeModulePaths(directory))
+  const { esm, esmDefaultResolve, esmConditions, cjs, cjsConditions, modern } = internalModules(locale)
+  const router = new ResolutionRouter(resolution, directory => cjs._nodeModulePaths(directory), locale)
   let delegatedEsm: { parent: string | undefined; request: string } | undefined
 
   const adaptEsm = (native: EsmResolve): EsmResolve => {
@@ -922,12 +931,14 @@ export function installRuntimeInterception(
 /**
  * Publish one runtime resolution for Harness-owned Workers.
  * @param resolution - complete package table and profile scope.
+ * @param locale - captured language for installation and successor diagnostics.
  * @returns a disposer restoring the previous thread environment data.
  */
 export function registerWorkerResolution(
   resolution: RuntimeResolution,
+  locale: DiagnosticLocale = defaultDiagnosticLocale(),
 ): () => void {
   const previous = getEnvironmentData(WORKER_RESOLUTION_KEY)
-  setEnvironmentData(WORKER_RESOLUTION_KEY, { resolution })
+  setEnvironmentData(WORKER_RESOLUTION_KEY, { resolution, locale })
   return () => { setEnvironmentData(WORKER_RESOLUTION_KEY, previous) }
 }

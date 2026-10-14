@@ -6,6 +6,8 @@
  * @module @deepseek-ai/dsh-sdk-client/api
  */
 
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
+import { diagnostics, defaultDiagnosticLocale } from './diagnostics.ts'
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import type { SessionEvent, TurnEndReason } from '@deepseek-ai/dsh-session'
@@ -33,8 +35,10 @@ export class DeepSeekHarness implements AsyncDisposable {
   /** @param options - dsh launch configuration plus the session route, effort, and output cap. */
   constructor(options?: DeepSeekHarnessOptions)
   constructor(options: DeepSeekHarnessOptions = {}, clientFactory?: () => HarnessClient) {
-    this.createClient = clientFactory ?? (() => new HarnessClient(options))
+    const launchOptions = { ...options }
+    this.createClient = clientFactory ?? (() => new HarnessClient(launchOptions))
     this.clientInstance = this.createClient()
+    launchOptions.language = this.clientInstance.language
     // Absolute before the handshake: the child spawns relative to THIS
     // process's cwd, but the wire cwd is resolved again inside the child — a
     // relative value would double-resolve (e.g. `worker` → `worker/worker`).
@@ -84,7 +88,7 @@ export class DeepSeekHarness implements AsyncDisposable {
         } catch (cleanupError: unknown) {
           throw new AggregateError(
             [error, cleanupError],
-            'DeepSeek Harness initialization and cleanup failed',
+            diagnostics[this.clientInstance.language].initializationCleanup(),
           )
         }
         if (!this.closed) this.clientInstance = this.createClient()
@@ -145,7 +149,7 @@ export function createProcessDeepSeekHarness(
   return new Constructor({
     ...runtime.cwd === undefined ? {} : { processCwd: runtime.cwd },
     ...options,
-  }, () => createProcessHarnessClient(runtime))
+  }, () => createProcessHarnessClient({ ...runtime, ...options.language === undefined ? {} : { language: options.language } }))
 }
 
 /** Per-run options: target session and streaming observer. */
@@ -205,7 +209,7 @@ export class HarnessSession {
         // Wire boundary: the envelope feeds the typed RunResult, so a
         // malformed runtime surfaces as a protocol error, not as type-invalid
         // data (or a TypeError out of finalResponse).
-        const event = validatedSessionEvent(notification.params.event)
+        const event = validatedSessionEvent(notification.params.event, client.language)
         notifications.push(notification)
         options?.onNotification?.(notification)
         events.push(event)
@@ -253,13 +257,13 @@ export function normalizeInput(input: string | SdkPromptContentBlock[]): SdkProm
 }
 
 /** Validate the provider-read fields of one wire turn-end reason. */
-function validatedTurnEndReason(value: unknown): TurnEndReason {
+function validatedTurnEndReason(value: unknown, language: DiagnosticLocale): TurnEndReason {
   if (!isRecord(value) || typeof value.kind !== 'string') {
-    throw new SdkProtocolError(`turn/end carried no reason envelope: ${JSON.stringify(value)}`)
+    throw new SdkProtocolError(diagnostics[language].reasonEnvelope(JSON.stringify(value)))
   }
   if (value.kind === 'aborted') {
     if (!isRecord(value.reason) || typeof value.reason.kind !== 'string') {
-      throw new SdkProtocolError(`turn/end carried a malformed aborted reason: ${JSON.stringify(value)}`)
+      throw new SdkProtocolError(diagnostics[language].abortedReason(JSON.stringify(value)))
     }
     switch (value.reason.kind) {
       case 'user':
@@ -269,11 +273,11 @@ function validatedTurnEndReason(value: unknown): TurnEndReason {
         break
       case 'hook':
         if (typeof value.reason.reason !== 'string') {
-          throw new SdkProtocolError(`turn/end carried a malformed hook abort reason: ${JSON.stringify(value)}`)
+          throw new SdkProtocolError(diagnostics[language].hookReason(JSON.stringify(value)))
         }
         break
       default:
-        throw new SdkProtocolError(`turn/end carried an unknown abort reason: ${JSON.stringify(value)}`)
+        throw new SdkProtocolError(diagnostics[language].unknownReason(JSON.stringify(value)))
     }
   }
   return value as TurnEndReason
@@ -282,11 +286,12 @@ function validatedTurnEndReason(value: unknown): TurnEndReason {
 /**
  * Validate the event envelope and assistant/turn fields consumed by SDK readers.
  * @param value - the raw `session.event` event payload.
+ * @param language - diagnostic language captured by the owning client.
  * @returns the event, or throws a protocol error for malformed consumed fields.
  */
-export function validatedSessionEvent(value: unknown): SessionEvent {
+export function validatedSessionEvent(value: unknown, language: DiagnosticLocale = defaultDiagnosticLocale()): SessionEvent {
   if (!isRecord(value) || typeof value.type !== 'string') {
-    throw new SdkProtocolError(`session.event carried no event envelope: ${JSON.stringify(value)}`)
+    throw new SdkProtocolError(diagnostics[language].eventEnvelope(JSON.stringify(value)))
   }
   // The one variant this module reads into (finalResponse) must carry
   // kind-tagged content blocks; other variants pass through under their
@@ -295,15 +300,15 @@ export function validatedSessionEvent(value: unknown): SessionEvent {
     const message = isRecord(value.data) ? value.data.message : undefined
     const content = isRecord(message) ? message.content : undefined
     if (!Array.isArray(content) || !content.every(block => isRecord(block) && typeof block.type === 'string')) {
-      throw new SdkProtocolError(`assistant/message event carried malformed content: ${JSON.stringify(value)}`)
+      throw new SdkProtocolError(diagnostics[language].messageContent(JSON.stringify(value)))
     }
   }
   if (value.type === 'turn/end') {
     const data = isRecord(value.data) ? value.data : undefined
     if (data === undefined) {
-      throw new SdkProtocolError(`turn/end event carried malformed data: ${JSON.stringify(value)}`)
+      throw new SdkProtocolError(diagnostics[language].turnData(JSON.stringify(value)))
     }
-    validatedTurnEndReason(data.reason)
+    validatedTurnEndReason(data.reason, language)
   }
   return value as SessionEvent
 }

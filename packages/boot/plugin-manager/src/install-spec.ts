@@ -4,6 +4,8 @@
  * @module @deepseek-ai/dsh-plugin-manager/install-spec
  */
 
+import { diagnosticMessages } from './diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import { homedir } from 'node:os'
 import { isAbsolute, resolve } from 'node:path'
 
@@ -62,32 +64,34 @@ function gitHost(spec: string): string {
  * directory means nothing to the person typing into a browser, and a
  * relative path resolved against the profile would point inside it.
  * @param raw - the spec as typed.
+ * @param locale Captured operation language; omitted, resolves the inherited environment.
  * @returns the parsed spec.
  * @throws {InvalidInstallSpecError} for an empty spec, a relative path, a name the
  * registry would refuse, or a URL that is neither a git host nor a tarball.
  */
-export function parseInstallSpec(raw: string): ParsedInstallSpec {
+export function parseInstallSpec(raw: string, locale?: DiagnosticLocale): ParsedInstallSpec {
+  const messages = diagnosticMessages(locale)
   const spec = raw.trim()
-  if (spec === '') throw invalid(spec, 'the package spec must not be empty')
+  if (spec === '') throw invalid(spec, messages.emptySpec)
   const path = spec.replace(/^(?:file|link):/, '')
   if (path !== spec || isAbsolute(path)) {
-    if (!isAbsolute(path)) throw invalid(spec, 'a local path must be absolute')
+    if (!isAbsolute(path)) throw invalid(spec, messages.absolutePathRequired)
     return TARBALL_SPEC.test(path) ? { kind: 'tarball', spec, path } : { kind: 'path', spec, path }
   }
-  if (/^\.{1,2}(?:[\\/]|$)/.test(spec)) throw invalid(spec, 'a local path must be absolute')
+  if (/^\.{1,2}(?:[\\/]|$)/.test(spec)) throw invalid(spec, messages.absolutePathRequired)
   const git = GIT_SHORTHAND.test(spec) || GIT_URL.test(spec) || HOSTED_REPOSITORY_URL.test(spec)
   if (git && !TARBALL_SPEC.test(spec)) return { kind: 'git', spec, host: gitHost(spec) }
   if (/^https?:\/\//i.test(spec)) {
     if (TARBALL_SPEC.test(spec)) return { kind: 'tarball', spec, host: new URL(spec).host }
-    throw invalid(spec, 'a URL must point at a git repository or a tarball')
+    throw invalid(spec, messages.gitOrTarballRequired)
   }
   const at = spec.indexOf('@', 1)
   const name = at === -1 ? spec : spec.slice(0, at)
   const range = at === -1 ? undefined : spec.slice(at + 1)
   if (name.length > PACKAGE_NAME_MAX_LENGTH || !PACKAGE_NAME.test(name)) {
-    throw invalid(spec, 'not a package name the registry accepts')
+    throw invalid(spec, messages.invalidPackageName)
   }
-  if (range === '') throw invalid(spec, 'a version after @ must not be empty')
+  if (range === '') throw invalid(spec, messages.emptyVersion)
   return range === undefined ? { kind: 'registry', spec, name } : { kind: 'registry', spec, name, range }
 }
 
