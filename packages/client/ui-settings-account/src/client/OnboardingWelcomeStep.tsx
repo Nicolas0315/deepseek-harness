@@ -3,6 +3,7 @@ import type { RefObject } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { DesktopOnboardingProps } from './onboarding-contract.ts'
 import { OnboardingIllustration } from './OnboardingIllustration.tsx'
+import { OnboardingProductPreview } from './OnboardingProductPreview.tsx'
 import art from './assets/onboarding-welcome.png'
 import artDark from './assets/onboarding-welcome-dark.png'
 import artZh from './assets/onboarding-welcome-zh.png'
@@ -17,12 +18,15 @@ export function OnboardingWelcomeStep({ t, locale, heading, busy, onStart }: Pic
 }) {
   return <div className={`${css.content} ${css.welcome}`}>
     <div className={css.copy}>
-      <h1 id="desktop-onboarding-title" ref={heading} tabIndex={-1}>{t('onboardingWelcome')} <em className={css.brand}>{t('onboardingBrand')}</em></h1>
+      <h1 id="desktop-onboarding-title" ref={heading} tabIndex={-1}>{locale === 'ja'
+        ? <><em className={css.brand}>{t('onboardingBrand')}</em> {t('onboardingWelcome')}</>
+        : <>{t('onboardingWelcome')} <em className={css.brand}>{t('onboardingBrand')}</em></>}</h1>
       <p className={css.heroDescription}>{t('onboardingIntroduction')}</p>
       <Button variant="primary" className={`${css.action} ${css.start}`} disabled={busy} onClick={onStart}>{t('onboardingStart')}</Button>
     </div>
     <div className={css.welcomeIllustration} aria-hidden="true">
-      <OnboardingIllustration className={css.welcomeArtwork} src={locale === 'zh' ? artZh : art} darkSrc={locale === 'zh' ? artZhDark : artDark} />
+      {locale === 'ja' ? <OnboardingProductPreview kind="welcome" t={t} className={css.welcomeArtwork} />
+        : <OnboardingIllustration className={css.welcomeArtwork} src={locale === 'zh' ? artZh : art} darkSrc={locale === 'zh' ? artZhDark : artDark} />}
     </div>
   </div>
 }

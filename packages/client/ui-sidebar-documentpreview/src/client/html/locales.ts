@@ -23,3 +23,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     documentHtml: HtmlPreviewKey
   }
 }
+
+/** Japanese dictionary, checked against the complete source key set. */
+export const ja: Record<keyof typeof en, string> = {
+  'title': 'HTML',
+  'frame': 'HTML 文書のプレビュー',
+  'loading': '文書を表示中…',
+  'failed': 'この HTML 文書をプレビューできませんでした。',
+}

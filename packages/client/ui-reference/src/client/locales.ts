@@ -50,3 +50,19 @@ export const en = {
   'time.months': '{n}mo',
   'time.years': '{n}y',
 } satisfies Record<ReferenceKey, string>
+
+
+/** Japanese dictionary, checked against the complete source key set. */
+export const ja: Record<keyof typeof en, string> = {
+  'section.files': 'ファイルとフォルダー',
+  'section.subagents': 'サブエージェント',
+  'section.sessions': 'セッション',
+  'candidate.noCwd': '（作業ディレクトリなし）',
+  'crumb.root': 'ワークスペース',
+  'time.now': '今',
+  'time.minutes': '{n}分',
+  'time.hours': '{n}時間',
+  'time.days': '{n}日',
+  'time.months': '{n}か月',
+  'time.years': '{n}年',
+}

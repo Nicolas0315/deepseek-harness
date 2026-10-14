@@ -1,5 +1,5 @@
 ---
-description: "面向用户与插件作者的 web GUI 本地化说明：zh/en 偏好、浏览器派生回退、类型化命名空间字典与框架翻译席位。"
+description: "面向用户与插件作者的 web GUI 本地化说明：zh/en/ja 偏好、浏览器派生回退、类型化命名空间字典与框架翻译席位。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用 `dsh-client-locale` 可在 web GUI 中切换内置的英文和中文 locale，或 client 插件添加的语言。用户选择会立即生效；loopback 页面把选择持久化到 `$DSH_HOME/cordis.patch.yml`，非 loopback 页面则只为当前进程保留选择。全新浏览器会使用浏览器请求的第一个受支持语言，直到允许读取的已存储偏好到达。插件作者可添加类型化命名空间字典，并通过公开 locale API 翻译；经 slot 渲染的文案无需重新加载即可随语言切换更新。
+使用 `dsh-client-locale` 可在 web GUI 中切换内置的英文、中文和日文 locale，或 client 插件添加的语言。用户选择会立即生效；loopback 页面把选择持久化到 `$DSH_HOME/cordis.patch.yml`，非 loopback 页面则只为当前进程保留选择。全新浏览器会使用浏览器请求的第一个受支持语言，直到允许读取的已存储偏好到达。插件作者可添加类型化命名空间字典，并通过公开 locale API 翻译；经 slot 渲染的文案无需重新加载即可随语言切换更新。
 
 ## 目录
 
@@ -35,7 +35,7 @@ kind: "package-reference"
 
 ### 注册字典
 
-用已合并进 `LocaleNamespaceMap` 的命名空间调用 `ctx.locale.register(ns, { zh, en })`；编译器会对照该命名空间的类型化键并集检查每个键，并要求两个内置 locale 齐全。消费方通过 `ctx.locale.bind(ns)` 或框架注入的 `t` 席位翻译。UI 已挂载后再注册的字典无需重新挂载即可生效。
+用已合并进 `LocaleNamespaceMap` 的命名空间调用 `ctx.locale.register(ns, { zh, en, ja })`；编译器会对照该命名空间的类型化键并集检查每个键，并要求三个内置 locale 齐全。消费方通过 `ctx.locale.bind(ns)` 或框架注入的 `t` 席位翻译。UI 已挂载后再注册的字典无需重新挂载即可生效。
 
 ### 解析包文本
 
@@ -50,13 +50,13 @@ export const inject = ['locale']
 
 export function apply(ctx) {
   ctx.effect(
-    () => ctx.locale.addLanguage({ id: 'ja', label: '日本語', fallback: 'en' }),
+    () => ctx.locale.addLanguage({ id: 'fr', label: 'Français', fallback: 'en' }),
     'my-locale: language',
   )
   ctx.effect(
-    () => ctx.locale.register('common', 'ja', {
-      cancel: 'キャンセル',
-      close: '閉じる',
+    () => ctx.locale.register('common', 'fr', {
+      cancel: 'Annuler',
+      close: 'Fermer',
     }),
     'my-locale: common dictionary',
   )
@@ -91,7 +91,7 @@ Host 通过 settings 服务为 loopback 页面持久化偏好。Client 会刻意
 
 文档语言同步只在值变化时写入 `<html lang>`；仅更新字典的 revision 不改动该属性。
 
-带类型的对象形式要求两个内置 locale 都有完整字典；逐 locale 形式允许语言包独立注册每个命名空间。逐键查找会先在请求命名空间中沿生效语言声明的 fallback 链查找，再在 `common` 中重复该链，最后显示键本身。绑定的翻译函数按命名空间保持稳定身份，因此可通过 inject 机制传递，且不会破坏 memoization。
+带类型的对象形式要求三个内置 locale 都有完整字典；逐 locale 形式允许语言包独立注册每个命名空间。逐键查找会先在请求命名空间中沿生效语言声明的 fallback 链查找，再在 `common` 中重复该链，最后显示键本身。绑定的翻译函数按命名空间保持稳定身份，因此可通过 inject 机制传递，且不会破坏 memoization。
 
 ### 源码地图
 
@@ -100,7 +100,7 @@ Host 通过 settings 服务为 loopback 页面持久化偏好。Client 会刻意
 | [`src/client/index.ts`](src/client/index.ts) | `LocaleRuntime`、字典注册表、Language 行注册、`locale/change` 事件 |
 | [`src/index.ts`](src/index.ts) | node 半侧：注册 `locale` 设置命名空间 |
 | [`src/locale-settings.ts`](src/locale-settings.ts) | `locale.preference` 的持久 schema |
-| [`src/locales/`](src/locales/) | 内置的 `zh`／`en` 字典 |
+| [`src/locales/`](src/locales/) | 内置的 `zh`／`en`／`ja` 字典 |
 
 </details>
 
@@ -134,8 +134,9 @@ Host 通过 settings 服务为 loopback 页面持久化偏好。Client 会刻意
 
 这些限制说明本地化在哪些地方不完整，或在注册时被冻结。它们是当前包约束，不是待办事项清单。
 
-- **注册表持有的文本只读取一次翻译**——在 slot 渲染路径之外于注册时捕获的文案（例如 command 注册表中的 `/model` 命令描述）在重新注册前保持注册时的语言；slot 渲染的文案随切换实时更新。
+- **注册表持有的文本只读取一次翻译**——在 slot 渲染路径之外于注册时捕获的文案在重新注册前保持注册时的语言；slot 渲染的文案随切换实时更新。
 - **语言包负责语言特有行为**——注册表提供选择、持久化、浏览器匹配、逐键回退和 `<html lang>`；它不增加复数规则或双向布局。
+- **外部应用保留其自身语言**——嵌入的 Chromium DevTools 使用其自带的英文前端；外部账号和计费页面使用相应服务支持的语言。
 
 <a id="dev-note"></a>
 ### 开发备注

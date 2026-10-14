@@ -31,3 +31,22 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     sidebarExcel: ExcelPreviewKey
   }
 }
+
+/** Japanese dictionary, checked against the complete source key set. */
+export const ja: Record<keyof typeof en, string> = {
+  'title': '表計算',
+  'language': 'ja',
+  'loading': '文書を表示中…',
+  'invalid': 'この表計算ファイルを開けませんでした。形式、内容、パスワード保護を確認してください。',
+  'tooLarge': 'このブックはプレビューのサイズ上限を超えています。',
+  'timeout': 'ブックを開く処理がタイムアウトしました。小さいファイルで再試行してください。',
+  'encoding': 'このテキストの文字コードを読み取れませんでした。UTF-8 または BOM 付き UTF-16 で保存して再試行してください。',
+  'formulaWarning': 'このブックには数式があります。表示結果が欠落したり、不正確になったりする場合があります。',
+  'unsupportedNotice': 'このプレビューはブック内の{features}に対応していません。すべての機能を利用するにはシステムのアプリで開いてください。',
+  'charts': 'グラフ',
+  'images': '画像',
+  'shapes': '図形',
+  'conditionalFormatting': '条件付き書式',
+  'featureSeparator': '、',
+  'retry': '再試行',
+}

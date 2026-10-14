@@ -4,12 +4,12 @@ import { act, type RenderResult } from '@testing-library/react'
 import { onTestFinished } from 'vitest'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
-import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
+import { en as commonEn, ja as commonJa } from '@deepseek-ai/dsh-client-locale/src/locales/index.ts'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { PropsRenderFactories, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
-import { en, NS, zh } from '../src/client/locale.ts'
+import { en, NS, zh, ja } from '../src/client/locale.ts'
 import { derivePresentationPolicy, type CollapseTiming } from '../src/client/presentation-policy.ts'
 import { registerChatNodeRenderers } from '../src/client/chat/register-node-renderers.ts'
 import type { PerformanceUsageMode, TranscriptViewMode } from '../src/chat-settings.ts'
@@ -26,8 +26,8 @@ export async function createReasoningRenderFixture(language = 'zh') {
   onTestFinished(() => runtime.dispose())
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
-  locale.register('common', { en: commonEn, zh: commonZh })
-  locale.register(NS, { en, zh })
+  locale.register('common', { en: commonEn, zh: commonZh, ja: commonJa })
+  locale.register(NS, { en, zh, ja })
   locale.setLocale(language)
   runtime.slots.installLocale(locale)
   const captured: { seats?: RenderSeats; setContent?: (content: ReactNode) => void } = {}

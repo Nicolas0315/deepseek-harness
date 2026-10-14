@@ -71,3 +71,36 @@ export const en = {
   'listbox.aria': '/{command} matches',
   'notice.attachmentsUnsupported': '/{command} does not accept attachments; remove them first',
 } satisfies Record<CommandKey, string>
+
+
+/** Japanese dictionary, checked against the complete source key set. */
+export const ja: Record<keyof typeof en, string> = {
+  'section.add': '追加',
+  'section.commands': 'コマンド',
+  'label.goal': '目標',
+  'label.plan': '計画',
+  'label.feedback': 'フィードバック',
+  'label.compact': '圧縮',
+  'label.permission': '権限',
+  'label.export': 'エクスポート',
+  'description.goal': '長期タスクの目標を設定・確認',
+  'description.plan': '計画モードを開始・終了',
+  'description.feedback': 'このセッションへのフィードバックを記録',
+  'description.compact': '過去の会話履歴を圧縮',
+  'description.permission': '権限プリセットを切り替える（サンドボックスモードと承認ポリシー）',
+  'description.export': 'このセッションのログを ZIP でダウンロード',
+  'token.goal': '目標',
+  'token.plan': '計画',
+  'token.feedback': 'フィードバック',
+  'token.compact': '圧縮',
+  'token.permission': '権限',
+  'token.export': 'エクスポート',
+  'search.placeholder': '検索…',
+  'search.aria': '選択肢を絞り込む',
+  'status.loading': '選択肢を読み込み中…',
+  'status.applying': '適用中…',
+  'status.empty': '選択肢がありません',
+  'overlay.aria': '/{command} の選択肢',
+  'listbox.aria': '/{command} の検索結果',
+  'notice.attachmentsUnsupported': '/{command} は添付ファイルに対応していません。先に削除してください',
+}

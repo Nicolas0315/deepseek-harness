@@ -54,6 +54,28 @@ export const zh: Record<WebSearchSettingsLocaleKey, string> = {
   invalidNumber: '请填数字；留空表示使用默认值。',
 }
 
+/** Japanese copy. */
+export const ja: Record<WebSearchSettingsLocaleKey, string> = {
+  title: 'ウェブ検索',
+  description: 'DeepSeek 検索プロバイダーを設定します。',
+  apiKey: 'API キー',
+  apiKeyHint: '設定ファイルとは別に保存されます。現在のキーを維持する場合は空欄にしてください。',
+  apiKeySet: 'API キーが設定されています。',
+  apiKeyUnset: 'API キーが設定されていません。DeepSeek Account モデルを使う会話だけが、既定のエンドポイントで検索できます。',
+  baseUrl: 'エンドポイント',
+  baseUrlHint: 'プロバイダーの既定値を使う場合は空欄にしてください。',
+  maxUses: 'リクエストあたりの最大検索回数',
+  maxUsesHint: '回答するまでに 1 回のリクエストで検索できる最大回数です。',
+  overridden: '上書き済み',
+  reset: '既定値に戻す',
+  readOnly: 'このデプロイメントでは設定は読み取り専用です。',
+  unavailable: 'このプラグインは読み込まれていないため、現在は設定できません。',
+  save: '保存',
+  saving: '保存中…',
+  saveFailed: 'デプロイメントでこの値が受け入れられなかったため、修正できるよう値を残しました。',
+  invalidNumber: '数値を入力するか、既定値を使う場合は空欄にしてください。',
+}
+
 /**
  * The form frame's copy, read from this page's dictionary.
  * @param t - the page's locale reader.

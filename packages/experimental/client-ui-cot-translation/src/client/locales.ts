@@ -43,6 +43,7 @@ export const zh: Record<CotTranslationKey, string> = {
   copy: '复制', copied: '已复制', codeTitle: '代码块', wrap: '自动换行', unwrap: '不换行', footnotes: '脚注',
 }
 
+
 /**
  * Read shared form chrome from the plugin dictionary.
  * @param t - current locale reader.
@@ -50,4 +51,40 @@ export const zh: Record<CotTranslationKey, string> = {
  */
 export function formLabels(t: (key: CotTranslationKey) => string): SettingsFormLabels {
   return { unavailable: t('unavailable'), readOnly: t('readOnly'), saveFailed: t('saveFailed'), save: t('save'), saving: t('saving') }
+}
+
+/** Japanese dictionary, checked against the complete source key set. */
+export const ja: Record<keyof typeof en, string> = {
+  'provider': '翻訳サービス',
+  'google': 'Google',
+  'bing': 'Bing',
+  'deepseekAccount': 'DeepSeek Flash — アカウント（有料）',
+  'deepseekOfficial': 'DeepSeek Flash — 公式 API（有料）',
+  'providerUnavailableOption': '{provider} — 利用不可',
+  'providerUnavailable': 'このサービスは利用できません。DeepSeek アカウントまたは公式 API を設定するか、利用可能なサービスを選択してください。',
+  'paidNotice': '未保存の断片ごとに、選択したアカウントまたは公式 API の認証情報で有料の DeepSeek Flash リクエストを送信します。推論を開き直すと保存済みの結果を再利用します。サービス、言語、原文、リクエスト設定を変更すると、新たな有料リクエストが送信される場合があります。',
+  'anonymousNotice': 'Bing と Google の翻訳にはログインや API キーは不要です。匿名の接続先ではリクエストが拒否・制限される場合があります。',
+  'targetLanguage': '翻訳先の言語',
+  'targetLanguageHint': 'auto は画面の言語に従います。zh、en、ja などの言語コードも使用できます。',
+  'privacy': '展開した推論内容を選択したサービスに送信します。非公開のコードや会話の詳細が含まれる場合があります。',
+  'translation': '翻訳を表示',
+  'original': '原文を表示',
+  'retry': '再試行',
+  'failed': '翻訳に失敗しました。原文を表示しています。',
+  'translating': '推論を翻訳中',
+  'invalidProvider': '翻訳サービスを選択してください。',
+  'invalidLanguage': 'auto または zh、en、ja などの言語コードを入力してください。',
+  'overridden': '上書き済み',
+  'reset': '既定に戻す',
+  'unavailable': '翻訳設定を利用できません。',
+  'readOnly': 'この環境の設定は読み取り専用です。',
+  'saveFailed': 'この環境では値が受け付けられませんでした。修正できるよう保持しています。',
+  'save': '保存',
+  'saving': '保存中…',
+  'copy': 'コピー',
+  'copied': 'コピーしました',
+  'codeTitle': 'コードブロック',
+  'wrap': '行を折り返す',
+  'unwrap': '行を折り返さない',
+  'footnotes': '脚注',
 }

@@ -99,6 +99,45 @@ export const zh: Record<SubagentSettingsLocaleKey, string> = {
   subagentModelSelectionOff: '关闭后，子智能体使用配置的默认模型或继承父 Agent 的模型；已选模型会保留。',
 }
 
+/** Japanese copy. */
+export const ja: Record<SubagentSettingsLocaleKey, string> = {
+  overridden: '上書き済み',
+  reset: '既定値に戻す',
+  readOnly: 'このデプロイメントでは設定は読み取り専用です。',
+  unavailable: 'このプラグインは読み込まれていないため、現在は設定できません。',
+  save: '保存',
+  saving: '保存中…',
+  saveFailed: 'デプロイメントでこの値が受け入れられなかったため、修正できるよう値を残しました。',
+  subagentTitle: 'サブエージェント',
+  subagentDescription: 'サブエージェントの再帰深度、数、モデルを設定します。',
+  subagentLimitsTitle: '上限',
+  subagentMaxDepth: '最大再帰深度',
+  subagentDepthHelpLabel: '最大再帰深度について',
+  subagentDepthHelp: 'Agent が作成できるサブエージェントの階層数を制限します。',
+  subagentDepthZero: 'サブエージェントを無効にする',
+  subagentDepthOne: 'メイン Agent のみがサブエージェントを作成できる',
+  subagentDepthOverride: 'ツールが独自の最大再帰深度を定義している場合は、その設定が優先されます。',
+  subagentMaxActive: 'サブエージェントの並列実行上限',
+  subagentCapacityHelpLabel: 'サブエージェントの並列実行上限について',
+  subagentCapacityHelp: '同じメイン Agent 配下で稼働している、すべての再帰階層のサブエージェント数です。メイン Agent は含みません。上限に達すると、新しい開始要求は拒否されます。',
+  subagentDepthInvalid: '0 以上の整数を入力してください。',
+  subagentCapacityInvalid: '1 以上の整数を入力してください。',
+  subagentModelSelectionTitle: 'モデルの選択',
+  subagentModelSelectionToggle: 'Agent にサブエージェント用のモデル選択を許可する',
+  subagentModelSelectionChoose: '有効にすると、Agent は下記の許可されたモデルから、各サブエージェントのプロバイダー、モデル、推論強度を選べます。新しいセッションにだけ適用されます。',
+  subagentModelSelectionAllowed: 'Agent が選択できるモデル',
+  subagentModelSelectionLoading: 'モデルを読み込み中…',
+  subagentModelSelectionLoadFailed: 'モデルを読み込めませんでした。',
+  subagentModelSelectionRetry: '再試行',
+  subagentModelSelectionPartial: '一部のモデルプロバイダーを読み込めませんでした。保存済みの選択は引き続き削除できます。',
+  subagentModelSelectionUnavailable: '現在利用できません',
+  subagentModelSelectionUnavailableGroup: '保存済みですが現在利用できません',
+  subagentModelSelectionEmpty: '現在、モデルを公開しているモデルプロバイダーはありません。',
+  subagentModelSelectionRequired: '保存前に少なくとも 1 つのモデルを選択してください。',
+  subagentModelSelectionConflict: '設定が別の場所で変更されました。下書きを破棄してもう一度お試しください。',
+  subagentModelSelectionOff: 'サブエージェントは設定済みの既定値を使用するか、親 Agent のモデルを引き継ぎます。保存済みのモデル選択は保持されます。',
+}
+
 /**
  * The form frame's copy, read from this page's dictionary.
  * @param t - the page's locale reader.

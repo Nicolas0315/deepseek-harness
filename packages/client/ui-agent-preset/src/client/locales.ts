@@ -1,6 +1,6 @@
 /** Locale bundles for the agent-preset hero chip, header label, and management section. */
 
-import { guideEn, guideZh, type PresetGuideKey } from './guide-locales.ts'
+import { guideEn, guideJa, guideZh, type PresetGuideKey } from './guide-locales.ts'
 
 /** Locale keys these surfaces render. */
 export type AgentPresetSettingsKey =
@@ -125,3 +125,35 @@ export const zh: Record<AgentPresetSettingsKey, string> = {
 // Settings plugin list inlines the same fold over this plugin's dictionaries.
 export { isBuiltInPreset, presetDisplayText } from '@deepseek-ai/dsh-agent-preset-registry/display'
 export type { PresetDisplaySource, PresetDisplayText } from '@deepseek-ai/dsh-agent-preset-registry/display'
+
+/** Japanese copy. */
+export const ja: Record<AgentPresetSettingsKey, string> = {
+  ...guideJa,
+  builtInGroup: '組み込み', customGroup: 'カスタム',
+  sectionIntro: 'エージェントのツールと作業方法を選びます。日常的なタスクには標準モード、DSH の機能追加にはクリエイターモードを使ってください。',
+  seatHint: '新しいタスクで使うエージェントプリセットを選択',
+  headerHint: 'このタスクの開始時に選択したエージェントプリセット',
+  nav: 'エージェントプリセット',
+  setDefault: '新しいタスクの既定に設定',
+  view: '設定を表示',
+  presetStandardName: '標準モード',
+  presetStandardDescription: 'コード、ファイル、情報を扱う大半のタスクに適しています。必要に応じて検索、編集、ターミナルコマンドなどのツールを使用します。',
+  presetPtcName: 'PTC モード',
+  presetPtcDescription: '標準モードのすべての機能を含みます。ツールをまとめて呼び出し、結果の絞り込み、整理、重複除去、集計、要約を行うタスクに適しています。',
+  presetMinimalName: '最小モード',
+  presetMinimalDescription: 'エージェントはターミナルツールだけで作業します。基本性能のテストや比較に利用できます。',
+  presetCordisName: 'クリエイターモード',
+  presetCordisDescription: '対話で DSH をカスタマイズします。エージェントにプラグインを作成させて機能や UI を追加したり、ツールとプロンプトを組み合わせて独自のモードを作成したりできます。',
+  inUse: '新しいタスクの既定',
+  noDescription: '説明がありません。',
+  brokenBadge: '読み込み失敗',
+  switchRefused: '{name} に切り替えられませんでした：{reason}',
+  standardUnavailable: '標準モードを利用できません。復元するか、利用可能な別のモードを選んでください。',
+  close: '閉じる',
+  creatorDraft: 'エージェントにプリセットの作成を依頼',
+  createPlugin: 'エージェントにプラグインの作成を依頼',
+  createPluginDescription: 'クリエイターモードで独自の DSH プラグインを作成',
+  createPluginChecking: 'クリエイターモードを利用できるか確認中',
+  createPluginUnavailable: '一時的に利用できません。メニューを開き直して再試行してください',
+  createPluginMissing: 'この設定にはクリエイターモードが含まれていません',
+}

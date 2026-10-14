@@ -40,6 +40,22 @@ export const zh: Record<AgentLoopSettingsLocaleKey, string> = {
   invalidNumber: '请填数字；留空表示使用默认值。',
 }
 
+/** Japanese copy. */
+export const ja: Record<AgentLoopSettingsLocaleKey, string> = {
+  title: 'エージェントループ',
+  description: 'Agent によるツール呼び出しの実行方法を設定します。',
+  maxParallel: '並列ツール呼び出し',
+  maxParallelHint: '1 ステップ内で同時に実行できる安全な呼び出し数の上限です。',
+  overridden: '上書き済み',
+  reset: '既定値に戻す',
+  readOnly: 'このデプロイメントでは設定は読み取り専用です。',
+  unavailable: 'このプラグインは読み込まれていないため、現在は設定できません。',
+  save: '保存',
+  saving: '保存中…',
+  saveFailed: 'デプロイメントでこの値が受け入れられなかったため、修正できるよう値を残しました。',
+  invalidNumber: '数値を入力するか、既定値を使う場合は空欄にしてください。',
+}
+
 /**
  * The form frame's copy, read from this page's dictionary.
  * @param t - the page's locale reader.

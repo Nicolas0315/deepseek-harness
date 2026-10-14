@@ -20,3 +20,13 @@ export const zoomEn = {
 
 /** Shared zoom dictionary keys. */
 export type ZoomLocaleKey = keyof typeof zoomZh
+
+/** Japanese dictionary, checked against the complete source key set. */
+export const zoomJa: Record<keyof typeof zoomEn, string> = {
+  'zoomControls': 'ズーム操作',
+  'zoomMenu': '表示倍率を選択',
+  'zoomOut': '縮小',
+  'zoomIn': '拡大',
+  'zoomFitWidth': '幅に合わせる',
+  'zoomValue': '{percent}%',
+}

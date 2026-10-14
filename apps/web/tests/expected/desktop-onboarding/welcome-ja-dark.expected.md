@@ -1,0 +1,6 @@
+- region "DeepSeek Harness へようこそ":
+  - heading "DeepSeek Harness へようこそ" [level=1]:
+    - emphasis: DeepSeek Harness
+    - text: へようこそ
+  - paragraph: DeepSeek Harness はローカルフォルダーをワークスペースとして使い、各種ツールでコンピューター上のファイルを読み書きします。調査や情報整理、文書・表計算の作成、コード作成、問題解決などを行えます。
+  - button "セットアップを開始"

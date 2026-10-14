@@ -22,7 +22,7 @@ describe('package text resolution', () => {
 
   it('resolves each field in the current locale without registering map languages', () => {
     const { locale } = make()
-    const title = { en: 'Tools', zh: '工具', ja: 'ツール' }
+    const title = { en: 'Tools', zh: '工具', ja: 'ツール', fr: 'Outils' }
     locale.setLocale('zh')
     const snapshot = locale.getSnapshot()
 
@@ -30,7 +30,7 @@ describe('package text resolution', () => {
     expect(locale.resolveText({ en: 'English description' })).toBe('English description')
     expect(locale.resolveText({ en: 'Fallback', zh: '' })).toBe('')
     expect(locale.getSnapshot()).toBe(snapshot)
-    expect(snapshot.locales.map(item => item.id)).toEqual(['zh', 'en'])
+    expect(snapshot.locales.map(item => item.id)).toEqual(['zh', 'en', 'ja'])
 
     locale.setLocale('en')
     expect(locale.resolveText(title)).toBe('Tools')

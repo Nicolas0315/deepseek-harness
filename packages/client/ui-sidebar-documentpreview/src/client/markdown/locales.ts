@@ -23,3 +23,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     documentMarkdown: MarkdownPreviewKey
   }
 }
+
+/** Japanese dictionary, checked against the complete source key set. */
+export const ja: Record<keyof typeof en, string> = {
+  'viewer.label': 'Markdown',
+  'code.copy': 'コピー',
+  'code.copied': 'コピーしました',
+  'footnotes': '脚注',
+}

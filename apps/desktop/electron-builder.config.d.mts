@@ -21,10 +21,10 @@ export interface DesktopElectronBuilderConfig {
   readonly extraResources: readonly [
     { readonly from: string, readonly to: 'runtime' },
     { readonly from: string, readonly to: 'icon.png' },
-    ...{ readonly from: string, readonly to: 'tray.ico' }[],
+    ...{ readonly from: string, readonly to: 'tray.ico' | 'ja.lproj/InfoPlist.strings' }[],
   ]
   readonly mac: {
-    readonly extendInfo: { readonly NSMicrophoneUsageDescription: string }
+    readonly extendInfo: { readonly NSMicrophoneUsageDescription: string, readonly CFBundleLocalizations: readonly ['en', 'zh_CN', 'ja'] }
     readonly entitlements: string
     readonly entitlementsInherit: string
     readonly identity: string | undefined
@@ -50,7 +50,7 @@ export interface DesktopElectronBuilderConfig {
     readonly perMachine: false
     readonly allowElevation: false
     readonly allowToChangeInstallationDirectory: false
-    readonly installerLanguages: readonly ['en_US', 'zh_CN']
+    readonly installerLanguages: readonly ['en_US', 'zh_CN', 'ja_JP']
   }
   readonly beforeBuild: () => Promise<boolean>
   readonly beforePack: (context: BeforePackContext) => Promise<void>

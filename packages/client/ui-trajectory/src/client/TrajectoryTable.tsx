@@ -301,12 +301,11 @@ function formatDurationMs(milliseconds: number, t: TrajectoryTranslate): string 
 
 function formatStartedAt(timestamp: number | null, t: TrajectoryTranslate): string {
   if (timestamp === null || !Number.isFinite(timestamp)) return t('timing.notAvailable')
-  const date = new Date(timestamp)
-  const two = (value: number) => String(value).padStart(2, '0')
-  const three = (value: number) => String(value).padStart(3, '0')
-  const time = `${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}.${three(date.getMilliseconds())}`
-  const day = `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}`
-  return `${day} ${time}`
+  return new Intl.DateTimeFormat(t('time.locale'), {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    fractionalSecondDigits: 3, hourCycle: 'h23',
+  }).format(timestamp)
 }
 
 /** Whether a click lands on an active text selection and should keep it. */

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "コンピューター操作（Cua Driver）",
+    "description": "同梱の Cua Driver でモデルがデスクトップを操作します。dsh を起動するアプリにデスクトップ操作の権限が必要です。"
+  }
+}

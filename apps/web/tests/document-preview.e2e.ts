@@ -371,6 +371,68 @@ it.skipIf(MODE === 'record').each(['en-US', 'zh-CN'])('fills the spreadsheet pan
   }
 })
 
+it.skipIf(MODE === 'record')('localizes read-only spreadsheet controls and search in Japanese', async () => {
+  const scaffold = await launchWebScaffold({ replayFixture: FIXTURE, paceMs: 5, compareReplaySession: false })
+  let browser: Browser | undefined
+  try {
+    browser = await chromium.launch()
+    const page = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: 'ja-JP', timezoneId: 'Asia/Tokyo' })
+    const consoleErrors = watchConsole(page)
+    onTestFailed(async () => { await saveFailureShot(page, `screenshots/0908-document-preview/excel-ja-${process.pid}`) })
+    const workspace = join(scaffold.workspaceCwd, 'workspace')
+    await mkdir(workspace, { recursive: true })
+    await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
+    await page.getByRole('textbox', { name: 'ワークスペースを選択', exact: true }).click()
+    const directory = page.getByRole('dialog', { name: 'ワークスペースのフォルダーを選択', exact: true })
+    await directory.getByRole('button', { name: 'パスを編集', exact: true }).click()
+    const pathInput = directory.getByRole('textbox', { name: 'パスを編集', exact: true })
+    await pathInput.fill(workspace)
+    await pathInput.press('Enter')
+    await directory.getByRole('button', { name: '開く', exact: true }).click()
+    const settled = scaffold.whenTurnSettled()
+    const input = page.locator('[data-composer-input][contenteditable="true"]').first()
+    await input.fill(PROMPT)
+    await input.press('Enter')
+    const sessionId = await settled
+    const cwd = scaffold.ctx.agents.get(sessionId)?.session.header.cwd
+    if (cwd === undefined) throw new Error('settled Session has no workspace cwd')
+    await writeFile(join(cwd, 'budget.xlsx'), await excelFixture())
+    await page.getByText('LIGHTHOUSE', { exact: true }).waitFor()
+    const column = page.locator('[data-rightbar-col]')
+    await page.locator('[data-sidebar-right-expand]').click()
+    await column.locator('[data-sidebar-right-guide-entry="files"]').click()
+    await column.locator('[data-files-entry="file"]').getByRole('button', { name: 'budget.xlsx', exact: true }).click()
+    const excel = column.locator('[data-excel-preview]')
+    await excel.locator('.fortune-sheet-overlay').waitFor()
+    await expectExcelLayout(excel)
+    expect(await excel.getByRole('textbox', { name: '現在のセルの内容', exact: true }).count()).toBe(1)
+    expect(await excel.locator('.fortune-zoom-container').getAttribute('title')).toBe('表示倍率の設定')
+    await excel.getByRole('button', { name: '縮小', exact: true }).click()
+    await expect.poll(() => excel.locator('.fortune-zoom-ratio-current').innerText()).toBe('90%')
+    await excel.getByRole('button', { name: '拡大', exact: true }).click()
+    await expect.poll(() => excel.locator('.fortune-zoom-ratio-current').innerText()).toBe('100%')
+    expect(await excel.locator('#shortcut-list').innerText()).toContain('コピー：Control または Meta キー、C。')
+    expect(await excel.locator('#shortcut-list').innerText()).not.toContain('Keyboard Shortcuts')
+    expect(await excel.locator('.fortune-toolbar').count()).toBe(0)
+    const overlay = excel.locator('.fortune-sheet-overlay')
+    await overlay.click({ position: { x: 140, y: 30 } })
+    await page.keyboard.press('ControlOrMeta+f')
+    const search = excel.locator('#fortune-search-replace')
+    await search.locator('#searchTab').getByText('検索', { exact: true }).waitFor()
+    expect(await search.locator('#regCheck').innerText()).toBe('正規表現')
+    expect(await search.locator('#caseCheck').innerText()).toBe('大文字と小文字を区別')
+    await search.locator('#searchInput input').fill('not-present-in-the-workbook')
+    await search.locator('#searchNextBtn').getByText('次を検索', { exact: true }).click()
+    await excel.getByText('内容が見つかりませんでした', { exact: true }).waitFor()
+    await excel.locator('.fortune-dialog-box-button-container').getByText('OK', { exact: true }).click()
+    await search.locator('.close-button').getByText('閉じる', { exact: true }).click()
+    await successShot(page, 'excel-japanese-controls')
+    expect(consoleErrors.pageErrors).toEqual([])
+  } finally {
+    try { await browser?.close() } finally { await scaffold.close() }
+  }
+})
+
 /** Pan with native pixel wheel input in every direction and along the sheet edges. */
 async function expectExcelPanning(page: Page, excel: Locator): Promise<void> {
   // Chromium's CDP wheel distances scale with the emulated device pixel ratio.

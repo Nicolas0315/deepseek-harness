@@ -20,3 +20,6 @@ export const en = {
   'toggle.collapse': 'Collapse sidebar',
   'panels.label': 'Global panels',
 } satisfies Record<SidebarKey, string>
+
+/** Japanese copy, checked against the complete namespace key set. */
+export const ja = { 'session.new': '新しいセッション', 'session.new.label': '新しいセッション', 'toggle.open': 'サイドバーを開く', 'toggle.collapse': 'サイドバーを折りたたむ', 'panels.label': '共通パネル' } satisfies Record<SidebarKey, string>

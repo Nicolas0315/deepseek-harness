@@ -94,8 +94,8 @@ function timelineKindLabel(kind: TrajectoryCellKind, t: TrajectoryTranslate): st
   }
 }
 
-function formatRecordedTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString(undefined, {
+function formatRecordedTime(timestamp: number, locale: string): string {
+  return new Date(timestamp).toLocaleTimeString(locale, {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -116,9 +116,9 @@ function timelineTooltipLabel(
   const range = detail.startedAt === undefined
     ? null
     : detail.durationMs === undefined
-      ? t('timeline.started', { time: formatRecordedTime(detail.startedAt) })
-      : `${formatRecordedTime(detail.startedAt)} → ${formatRecordedTime(
-        detail.startedAt + detail.durationMs,
+      ? t('timeline.started', { time: formatRecordedTime(detail.startedAt, t('time.locale')) })
+      : `${formatRecordedTime(detail.startedAt, t('time.locale'))} → ${formatRecordedTime(
+        detail.startedAt + detail.durationMs, t('time.locale'),
       )}`
   const segments = detail.ttftMs === undefined || detail.decodingMs === undefined
     ? null

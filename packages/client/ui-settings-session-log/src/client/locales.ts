@@ -13,3 +13,8 @@ export const zh: Record<keyof typeof en, string> = {
   saved: '设置已保存',
   failed: '无法保存设置',
 }
+
+/** Japanese preference copy. */
+export const ja: Record<keyof typeof en, string> = {
+  title: '公式モデル API の利用時にセッションログをアップロードする', description: 'DeepSeek のモデルと製品の改善に協力します。', saved: '設定を保存しました', failed: '設定を保存できませんでした',
+}

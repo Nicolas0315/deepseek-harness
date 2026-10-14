@@ -30,7 +30,7 @@ export const inject = ['slots', 'uiWorkspace', 'locale']
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => {
-    // The two dictionaries land as a unit: if the second registration hits a
+    // The dictionaries land as a unit: if a later registration hits a
     // rival owner of the namespace, the first rolls back before the throw —
     // a failed activation must not squat the namespace's other locale.
     const disposers: (() => void)[] = []
@@ -64,6 +64,21 @@ export function apply(ctx: ClientContext): void {
         'browser.loading': 'Loading…',
         'browser.truncated': 'Too many folders to list; only the beginning is shown.',
         'browser.showHidden': 'Show hidden files',
+      }],
+      ['ja', {
+        'browser.title': 'ワークスペースのフォルダーを選択',
+        'browser.home': 'ホーム',
+        'browser.newFolder': '新しいフォルダー',
+        'browser.folderName': 'フォルダー名',
+        'browser.createIn': '「{name}」にフォルダーを作成',
+        'browser.untitledFolder': '名称未設定のフォルダー',
+        'browser.create': '作成',
+        'browser.cancel': 'キャンセル',
+        'browser.open': '開く',
+        'browser.editPath': 'パスを編集',
+        'browser.loading': '読み込み中…',
+        'browser.truncated': 'フォルダーが多いため、一部のみ表示しています。',
+        'browser.showHidden': '隠しファイルを表示',
       }],
     ]
     try {
