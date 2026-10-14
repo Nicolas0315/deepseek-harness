@@ -4,6 +4,11 @@ import { resolveDiagnosticLocale } from '../src/index.ts'
 describe('diagnostic language selection', () => {
   it.each([
     [{}, 'ja-JP', 'ja'],
+    [{}, 'zh-CN', 'zh'],
+    [{}, 'Chinese_China', 'zh'],
+    [{ LANG: 'zh_CN.UTF-8' }, 'en-US', 'zh'],
+    [{ DSH_LANG: 'zh', LANG: 'ja_JP.UTF-8' }, 'en-US', 'zh'],
+    [{ DSH_LANG: 'Chinese_China.936' }, 'en-US', 'zh'],
     [{}, 'Japanese_Japan', 'ja'],
     [{ LANG: 'Japanese_Japan.932' }, 'en-US', 'ja'],
     [{ LANG: 'ja_JP.UTF-8' }, 'en-US', 'ja'],

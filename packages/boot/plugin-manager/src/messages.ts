@@ -119,11 +119,69 @@ dsh: インストールは維持しますが、正確なバージョンの例外
   emptyVersion: '@ の後にバージョンを指定してください',
 }
 
+const chinese: Messages = {
+  pnpmWorkspaceYamlMustBeAYAMLMapping: 'pnpm-workspace.yaml 必须是 YAML 映射',
+  allowbuildsMustBeAYAMLMapping: 'allowBuilds 必须是 YAML 映射',
+  allowbuildsMustNotContainYAMLAnchorsOrAliases: 'allowBuilds 不得包含 YAML 锚点或别名',
+  noRegistryWasAsked: '未查询任何 registry',
+  officialBundleSourceDSHInstallationRequiresItsCompleteWorkspace: (value0: string, value1: string) => `官方 bundle ${value0}：源码 DSH 安装 ${value1} 需要完整的 workspace 检出目录`,
+  officialBundleExpectedOneWorkspacePackageInFoundRestore: (value0: string, value1: string, value2: string) => `官方 bundle ${value0}：应在 ${value1} 中找到一个 workspace package，实际找到 ${value2} 个；请恢复检出目录并运行 pnpm install`,
+  officialBundleMustDeclareAPublicBundleAtDSH: (value0: string, value1: string, value2: string) => `官方 bundle ${value0}：${value1} 必须在 DSH 版本 ${value2} 声明公开 bundle`,
+  officialBundleBuiltRuntimeIsMissingInRunPnpm: (value0: string, value1: string, value2: string) => `官方 bundle ${value0}：${value1} 中缺少已构建的运行时；请在 ${value2} 中运行 pnpm install 和 pnpm run build`,
+  officialBundleBundlePatchIsMissingRestoreTheCheckout: (value0: string, value1: string) => `官方 bundle ${value0}：缺少 bundle patch ${value1}；请恢复检出目录`,
+  profilePatchMustBeAYAMLSequence: 'Profile patch 必须是 YAML 序列',
+  aRegistryMustBeAnHttpSURL: (value0: string) => `registry 必须是 http(s) URL：${value0}`,
+  plainDependency: (value0: string) => `dsh：警告：${value0} 未声明 dsh.bundle——已作为普通依赖安装，而非 profile 层
+`,
+  invalidRunRecord: (value0: string) => `dsh：${value0} 未命名 package 运行；此 profile 中不再有早先 package 操作运行后再删除它
+`,
+  activeRun: (value0: string, value1: string, value2: string) => `dsh：由早先 package 操作启动的进程 ${value0} 在此 profile 中仍运行，其父进程已结束；请等待或停止后重试。若进程 ${value1} 不是该 package 运行，请删除 ${value2}。
+`,
+  installationRejected: (value0: string, value1: string) => `
+dsh：安装被拒绝：${value0}
+dsh：${value1}。
+`,
+  nothingInstalled: '未安装任何内容',
+  pnpmOutputCut: 'dsh：pnpm 进程结束后输出被截断\n',
+  pnpmStalled: (value0: string) => `dsh：pnpm 已 ${value0}ms 没有输出，已终止
+`,
+  pnpmFailed: 'pnpm 失败',
+  validateInstalledFailed: (value0: string, value1: string) => `无法验证已安装 package ${value0}：${value1}`,
+  installedButDenied: (value0: string) => `
+dsh：警告：${value0}
+dsh：它将保持安装状态，但 profile 启动会拒绝它，直到授予这些精确版本的例外。
+`,
+  restoredInstallation: '已恢复 package.json、pnpm-lock.yaml 和 node_modules',
+  restoreIncomplete: "已恢复 package.json 和 pnpm-lock.yaml，但无法重新安装 node_modules；请运行 'dsh plugin install'",
+  profileInitialized: (value0: string, value1: string) => `dsh：已在 ${value1} 初始化 profile ${value0}
+`,
+  connectionTimeout: (value0: string, value1: string) => `dsh：连接 ${value0} 在 ${value1}ms 后超时
+`,
+  githubConnectionFailed: 'GitHub 连接检查失败',
+  installCancelled: '安装已取消',
+  missingTarball: 'tarball 不存在',
+  missingPath: '路径不存在',
+  unreadablePackage: (value0: string) => `该路径没有可读取的 package.json：${value0}`,
+  unnamedPackage: 'package.json 未命名 package',
+  alreadyInstalled: (value0: string) => `${value0} 已安装`,
+  notBundle: (value0: string) => `${value0} 未声明 dsh.bundle`,
+  viewTimeout: (value0: string) => `pnpm view 在 ${value0}ms 后超时`,
+  viewFailed: (value0: string) => `pnpm view 以 ${value0} 退出`,
+  viewUnreadable: (value0: string) => `无法读取 pnpm view 输出：${value0}`,
+  viewNoPackage: 'pnpm view 未返回 package',
+  pendingBuildsUnreadable: 'pnpm 失败后无法读取待批准构建',
+  emptySpec: 'package spec 不得为空',
+  absolutePathRequired: '本地路径必须是绝对路径',
+  gitOrTarballRequired: 'URL 必须指向 git repository 或 tarball',
+  invalidPackageName: '不是 registry 接受的 package 名称',
+  emptyVersion: '@ 后的版本不得为空',
+}
+
 /**
  * Read one catalog without consulting process state.
  * @param locale - language captured by the caller.
  * @returns messages with matching keys and parameter lists.
  */
 export function diagnosticCatalog(locale: DiagnosticLocale): Messages {
-  return locale === 'ja' ? japanese : english
+  return locale === 'ja' ? japanese : locale === 'zh' ? chinese : english
 }

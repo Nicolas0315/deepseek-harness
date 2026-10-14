@@ -1,4 +1,4 @@
-/** Source-owned English and Japanese human diagnostics. Parameters retain original diagnostic data. */
+/** Source-owned English, Chinese, and Japanese human diagnostics. Parameters retain original diagnostic data. */
 
 import { resolveDiagnosticLocale, type DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 
@@ -58,13 +58,40 @@ const japanese: Messages = {
   reasoning: 'dsh: 推論:\n',
 }
 
+const chinese: Messages = {
+  headlessSummaryCannotReadSeqBelowCapturedLength: (value0: string, value1: string) => `headless 汇总无法读取低于已捕获长度 ${value1} 的序号 ${value0}`,
+  headlessAdoptionCannotReadSeqBelowCapturedLength: (value0: string, value1: string) => `headless 接管无法读取低于已捕获长度 ${value1} 的序号 ${value0}`,
+  sessionRecordsAMalformedAgentPresetSelectedEventAnd: (value0: string) => `会话“${value0}”记录了格式错误的 agent-preset/selected 事件，无法接管`,
+  sessionRunsUnderAgentPresetWhichTheOneShot: (value0: string, value1: string) => `会话“${value0}”在 agent preset“${value1}”下运行，单次运行器不会组合该预设`,
+  sessionIsASubagentOrForkedSessionAndCannot: (value0: string) => `会话“${value0}”是子代理或分叉会话，无法直接驱动`,
+  sessionRecordedNoWorkingDirectorySoItCannotBe: (value0: string) => `会话“${value0}”没有记录工作目录，无法接管`,
+  sessionWasRecordedInNot: (value0: string, value1: string, value2: string) => `会话“${value0}”记录在“${value1}”中，不在“${value2}”中`,
+  headlessSessionIdRequiresTheSessionPersistenceServiceTheSession: 'headless --session-id 需要 sessionPersistence 服务；会话不会在此进程后保留',
+  headlessSessionIdRequiresTheSessionQueryServiceDshBase: 'headless --session-id 需要 sessionQuery 服务；dsh-base 提供此服务',
+  sessionIsLiveInThisProcessSoTheOne: (value0: string) => `会话“${value0}”在此进程中仍处于活动状态，单次运行器无法拥有独占运行区间`,
+  sessionDoesNotExistOmitSessionIdToStart: (value0: string) => `会话“${value0}”不存在；省略 --session-id 以开始新会话`,
+  headlessRunnerSessionIdMustNotBeBlank: 'headless-runner：sessionId 不能为空',
+  aTaskIsRequiredForExampleDshProfileHeadless: '需要任务，例如：dsh --profile headless "运行测试"',
+  headlessRunnerTheLauncherMustProvideCtxAppExitBefore: 'headless-runner：启动器必须在树挂载前提供 ctx.appExit',
+  examplesDshProfileHeadlessRunTheTestsAnswerOne: '\n示例：\n  dsh --profile headless "运行测试"          回答一个任务后退出\n  echo "运行测试" | dsh --profile headless   从标准输入读取任务\n  dsh --profile headless --json "运行测试"   输出机器可读的运行事件\n  dsh --profile headless --session-id session-… "继续"   恢复现有会话\n',
+  theTaskTextMultipleWordsAreJoinedBySpaces: '任务文本；多个词以空格连接，`-` 从标准输入读取',
+  adoptThePersistedSessionWithThisIdAnUnknown: '接管具有此 ID 的持久化会话；未知 ID 会报错',
+  writeNewlineDelimitedRunEventsToStdoutInsteadOf: '将换行分隔的运行事件写入标准输出，而非最终消息',
+  showThisHelp: '显示此帮助',
+  answerOneTaskAndExitTheAnswerGoesTo: '回答一个任务后退出；答案写入标准输出，诊断写入标准错误。',
+  errorMustBeTheOnlyTaskArgument: '错误：`-` 必须是唯一的任务参数',
+  errorATaskIsRequiredForExampleDshProfile: '错误：需要任务，例如：dsh --profile headless "运行测试"',
+  errorSessionIdRequiresANonEmptySessionId: '错误：--session-id 需要非空会话 ID',
+  reasoning: 'dsh：推理：\n',
+}
+
 /**
  * Select one complete diagnostic catalog for an operation.
  * @param locale - captured invocation language; direct API callers default to their process locale.
- * @returns the English or Japanese catalog with identical keys and parameter lists.
+ * @returns the English, Chinese, or Japanese catalog with identical keys and parameter lists.
  */
 export function diagnosticMessages(
   locale: DiagnosticLocale = resolveDiagnosticLocale(process.env, Intl.DateTimeFormat().resolvedOptions().locale),
 ): Messages {
-  return locale === 'ja' ? japanese : english
+  return locale === 'ja' ? japanese : locale === 'zh' ? chinese : english
 }

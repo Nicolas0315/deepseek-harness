@@ -4,8 +4,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { createProcessDeepSeekHarness, validatedSessionEvent } from '../src/api.ts'
 import { createProcessHarnessClient, HarnessClient, SdkProtocolError, TransportClosedError } from '../src/client.ts'
 import { resolveDshLaunch, type RuntimeProcessOptions } from '../src/launch.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 
-function runtime(language: 'en' | 'ja', env: NodeJS.ProcessEnv = {}): RuntimeProcessOptions {
+function runtime(language: DiagnosticLocale, env: NodeJS.ProcessEnv = {}): RuntimeProcessOptions {
   return {
     command: process.execPath,
     args: ['--import', import.meta.resolve('tsx/esm'), fileURLToPath(new URL('./fake-runtime.ts', import.meta.url))],
@@ -27,6 +28,14 @@ describe('SDK diagnostic language', () => {
     expect(en.environment().DSH_LANG).toBe('en')
     expect(ja.description).toBe('dsh プロファイル "sdk"')
     expect(en.description).toBe('dsh profile "sdk"')
+  })
+
+  it('uses Chinese diagnostics for an explicit SDK instance language', async () => {
+    const client = createProcessHarnessClient(runtime('zh', { FAKE_MALFORMED: '1' }))
+    try {
+      await expect(client.initialize({ cwd: process.cwd(), provider: 'fake', model: 'fake' }))
+        .rejects.toThrow('initialize 未返回服务器标识：{}')
+    } finally { await client.close() }
   })
 
   it('isolates simultaneous instances and preserves raw runtime errors', async () => {

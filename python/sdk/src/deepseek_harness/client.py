@@ -38,7 +38,7 @@ class HarnessConfig:
     initialize_timeout_seconds: float = 30.0
     request_timeout_seconds: float | None = None
     shutdown_timeout_seconds: float | None = 1.0
-    language: Literal["en", "ja"] | None = None
+    language: Literal["en", "zh", "ja"] | None = None
 
 
 class HarnessClient:

@@ -1,4 +1,4 @@
-/** Source-owned English and Japanese human diagnostics. Parameters retain original diagnostic data. */
+/** Source-owned English, Chinese, and Japanese human diagnostics. Parameters retain original diagnostic data. */
 
 import { resolveDiagnosticLocale, type DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 
@@ -66,13 +66,44 @@ const japanese: Messages = {
   browserLauncherFailed: (value0: string) => `ブラウザー起動プロセスが終了コード ${value0} で終了しました`,
 }
 
+const chinese: Messages = {
+  browserOsLauncherFailed: '浏览器操作系统启动器以下列退出代码结束：',
+  webAppWebServerServiceMissingWhileResolvingWebRuntime: 'web-app：解析 Web 运行时时缺少 webServer 服务',
+  webAppBindAddressCarriesAnInterfaceZoneId: (value0: string) => `web-app：绑定地址 ${value0} 包含 URL 无法表达的接口区域 ID；请通过 --public-url 传入浏览器实际访问的根地址`,
+  webAppDeepseekAiDshWebFrontendIsNot: 'web-app：此组合无法解析 @deepseek-ai/dsh-web-frontend',
+  dshWebListeningOnOverPlainHTTPRestrictThis: (value0: string) => `dsh web：正在通过纯 HTTP 在 ${value0} 监听；请将此端口限制在受信任的代理或网络中`,
+  dshWebOpeningTheDefaultBrowserPassNoOpen: 'dsh web：正在打开默认浏览器；传入 --no-open 可禁用',
+  webAppCouldNotOpenTheDefaultBrowserBecause: (value0: string) => `web-app：无法打开默认浏览器，因为 ${value0}；请使用启动时显示的 dsh web URL`,
+  mustNotContainASCIIWhitespaceOrControlCharacters: (value0: string) => `${value0} 不得包含 ASCII 空白或控制字符`,
+  mustBeAnAbsoluteHttpOrHttpsURLOf: (value0: string) => `${value0} 必须是形如 http(s)://host[/prefix] 的绝对 http 或 https URL`,
+  mustNotIncludeAQueryOrFragmentOr: (value0: string) => `${value0} 不得包含查询或片段（? 或 #）`,
+  mustNameAHostAfterHttpOrHttps: (value0: string) => `${value0} 必须在 http:// 或 https:// 后指定主机`,
+  mustNotIncludeCredentialsAUsernameOrPasswordBefore: (value0: string) => `${value0} 不得包含凭据（@ 前的用户名或密码，包括空用户名）`,
+  mustBeAnAbsoluteHttpOrHttpsURL: (value0: string) => `${value0} 必须是绝对 http 或 https URL`,
+  examplesDshProfileWebServeOnTheComposedHost: '\n示例：\n  dsh --profile web                          在组合后的主机和端口提供服务\n  dsh --profile web --no-open                提供服务但不打开浏览器\n  dsh --profile web --port 8080              在其他端口提供服务\n  dsh --profile web --host 10.0.0.7          绑定一个本地接口地址\n  dsh --profile web --public-url https://app.example/ui/ --trusted-host app.example\n                                             发布移除前缀的 HTTPS 代理入口并允许其权威地址\n  dsh --profile web --tls-cert ./server-chain.pem --tls-key ./server-key.pem\n                                             使用现有证书和密钥提供 HTTPS\n',
+  unencryptedPEMPrivateKeyRequiresTlsCert: '未加密的 PEM 私钥；需要 --tls-cert',
+  pemServerCertificateChainRequiresTlsKey: 'PEM 服务器证书链；需要 --tls-key',
+  extraAuthorityTheApiBrowserTrustFenceAcceptsHost: '/api 浏览器信任限制接受的额外权威地址（host 或 host:port；可重复）',
+  advertiseThisHTTPSRootInThePrintedOpened: '在显示、打开、web-surface 和 DSH_WEB_URL 中发布此 HTTP(S) 根地址；不会授予信任',
+  listenPortPassToLetTheOSPickA: '监听端口；传入 0 让操作系统选择空闲端口',
+  doNotOpenTheWebUIInTheDefault: '不在默认浏览器中打开 Web UI',
+  bindAddressOneConcreteIPv4OrIPv6LiteralOf: '绑定地址：本地接口的一个具体 IPv4 或 IPv6 字面量；拒绝通配地址',
+  showThisHelp: '显示此帮助',
+  serveTheDeepSeekHarnessBrowserUI: '提供 DeepSeek Harness 浏览器 UI。',
+  errorHostIsAnUnspecifiedWildcardAddressWhichIs: (value0: string) => `错误：--host ${value0} 是不支持的未指定（通配）地址：绑定所有接口会将远程代码执行暴露到网络；请改为绑定一个具体 IPv4 或 IPv6 地址`,
+  errorPortMustBeANumberGot: (value0: string) => `错误：--port 必须是数字，得到 ${value0}`,
+  errorTlsCertAndTlsKeyMustBeSupplied: '错误：--tls-cert 和 --tls-key 必须一起提供',
+  error: (value0: string) => `错误：${value0}`,
+  browserLauncherFailed: (value0: string) => `浏览器启动器以退出代码 ${value0} 结束`,
+}
+
 /**
  * Select one complete diagnostic catalog for an operation.
  * @param locale - captured invocation language; direct API callers default to their process locale.
- * @returns the English or Japanese catalog with identical keys and parameter lists.
+ * @returns the English, Chinese, or Japanese catalog with identical keys and parameter lists.
  */
 export function diagnosticMessages(
   locale: DiagnosticLocale = resolveDiagnosticLocale(process.env, Intl.DateTimeFormat().resolvedOptions().locale),
 ): Messages {
-  return locale === 'ja' ? japanese : english
+  return locale === 'ja' ? japanese : locale === 'zh' ? chinese : english
 }

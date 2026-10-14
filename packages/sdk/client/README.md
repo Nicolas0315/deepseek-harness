@@ -87,7 +87,7 @@ A run subscribes to the session tree, queues the prompt, waits until the prompt'
 
 ### Errors and teardown
 
-`language: 'en' | 'ja'` selects diagnostics per SDK instance. Without it, the client captures `DSH_LANG`, `LC_ALL`, `LC_MESSAGES`, `LANG`, then the system locale, in that order; the `ja` primary language selects Japanese and other values select English. The child receives that selection through its own `DSH_LANG`; parent state is unchanged. SDK-owned fixed messages are translated; error classes, protocol names, JSON payloads, stderr, model text, and remote/provider/process errors remain verbatim.
+`language: 'en' | 'zh' | 'ja'` selects diagnostics per SDK instance. Without it, the client captures `DSH_LANG`, `LC_ALL`, `LC_MESSAGES`, `LANG`, then the system locale, in that order; `zh` selects Chinese, `ja` selects Japanese, and other values select English. The child receives that selection through its own `DSH_LANG`; parent state is unchanged. SDK-owned fixed messages are translated; error classes, protocol names, JSON payloads, stderr, model text, and remote/provider/process errors remain verbatim.
 
 Every failure mode maps to one exported error class — a wire error response, an elapsed request bound, a response outside the documented protocol, or a dead runtime — so callers branch on failure type; the four classes are exported from [src/index.ts](src/index.ts). Teardown is a private, idempotent escalation (stdin EOF → SIGTERM → SIGKILL) in [src/dispose.ts](src/dispose.ts) that ends only at actual process exit.
 

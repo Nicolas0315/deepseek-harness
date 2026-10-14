@@ -1,5 +1,5 @@
 /** Fixed SDK server diagnostics; interpolated runtime values remain verbatim. */
-import { resolveDiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
+import { resolveDiagnosticLocale, type DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 
 const en = {
   attachments: () => 'SDK image prompt requires an attachment store',
@@ -33,13 +33,29 @@ const ja = {
   shuttingDown: () => 'SDK サーバーは終了処理中です',
 } satisfies typeof en
 
+const zh = {
+  attachments: () => 'SDK 图像提示需要附件存储',
+  effort: () => 'initialize 的 reasoningEffort 必须是非空字符串',
+  maxTokens: () => 'initialize 的 maxTokens 必须是正安全整数',
+  provider: (provider: string) => `没有为提供方“${provider}”注册适配器`,
+  notInitialized: () => 'SDK 服务器未初始化',
+  unknownSession: (id: string) => `未知 SDK 会话：${id}`,
+  disposed: (id: string) => `会话代理已在服务器外释放：${id}`,
+  cleanup: () => 'SDK 服务器清理失败',
+  waitId: () => 'session/wait 需要字符串 sessionId',
+  directoryId: () => 'working-directory 请求需要非空 sessionId',
+  directoryPath: () => 'working-directory set 需要字符串 path',
+  method: (method: string) => `未知 DeepSeek Harness SDK 运行时方法：${method}`,
+  shuttingDown: () => 'SDK 服务器正在关闭',
+} satisfies typeof en
+
 /** Fixed diagnostics indexed by the captured instance language. */
-export const diagnostics = { en, ja }
+export const diagnostics = { en, zh, ja }
 
 /**
  * Resolve standalone helper diagnostics from the current environment.
  * @returns the selected diagnostic language.
  */
-export function defaultDiagnosticLocale(): 'en' | 'ja' {
+export function defaultDiagnosticLocale(): DiagnosticLocale {
   return resolveDiagnosticLocale(process.env, Intl.DateTimeFormat().resolvedOptions().locale)
 }

@@ -18,13 +18,15 @@ from deepseek_harness.errors import JsonRpcError, TransportClosedError
 @pytest.mark.parametrize("module", ["deepseek_harness._messages", "deepseek_harness_runtime._messages"])
 def test_catalogs_have_identical_keys_and_parameters(module: str) -> None:
     messages = importlib.import_module(module)
-    assert messages.CATALOGS["en"].keys() == messages.CATALOGS["ja"].keys()
+    for language in ("zh", "ja"):
+        assert messages.CATALOGS["en"].keys() == messages.CATALOGS[language].keys()
     for key, english in messages.CATALOGS["en"].items():
-        japanese = messages.CATALOGS["ja"][key]
         parameters = lambda text: {field for _, field, _, _ in string.Formatter().parse(text) if field is not None}
-        assert parameters(english) == parameters(japanese), key
-        assert japanese != english, key
-        assert messages.message(key, "ja", **{field: "日本語値" for field in parameters(english)})
+        for language, value in (("zh", "中文值"), ("ja", "日本語値")):
+            localized = messages.CATALOGS[language][key]
+            assert parameters(english) == parameters(localized), key
+            assert localized != english, key
+            assert messages.message(key, language, **{field: value for field in parameters(english)})
 
 
 @pytest.mark.parametrize("module", ["deepseek_harness._messages", "deepseek_harness_runtime._messages"])
@@ -34,11 +36,14 @@ def test_catalogs_have_identical_keys_and_parameters(module: str) -> None:
     ({"LC_MESSAGES": "ja_JP.UTF8", "LANG": "en_US"}, "ja"),
     ({"LC_ALL": "fr_FR", "LANG": "ja"}, "en"),
     ({"DSH_LANG": "jargon", "LANG": "ja"}, "en"),
+    ({"DSH_LANG": "zh-CN", "LANG": "ja_JP.UTF-8"}, "zh"),
+    ({"LC_MESSAGES": "Chinese_China.936", "LANG": "en_US"}, "zh"),
 ])
 def test_locale_precedence(module: str, env: dict[str, str], expected: str) -> None:
     messages = importlib.import_module(module)
     assert messages.resolve_language(env) == expected
     assert messages.resolve_language(env, "ja") == "ja"
+    assert messages.resolve_language(env, "zh") == "zh"
     assert messages.resolve_language(env, "en") == "en"
 
 
@@ -54,9 +59,10 @@ for line in sys.stdin:
     class Response(BaseModel):
         language: str
         payload: dict
-    for language in ("ja", "en"):
+    for language in ("zh", "ja", "en"):
         client = HarnessClient(HarnessConfig(language=language), _launch_args=(sys.executable, str(script)))
-        with pytest.raises(TransportClosedError, match="稼働していません" if language == "ja" else "is not running"):
+        expected = {"zh": "未运行", "ja": "稼働していません", "en": "is not running"}[language]
+        with pytest.raises(TransportClosedError, match=expected):
             client.notify("日本語method", {"名前": "本文"})
         client.start()
         try:
@@ -92,11 +98,16 @@ def test_runtime_locale_is_explicit_without_global_mutation(monkeypatch) -> None
 
 
 @pytest.mark.parametrize("module", ["deepseek_harness._messages", "deepseek_harness_runtime._messages"])
-@pytest.mark.parametrize("system_language", ["ja_JP", "Japanese_Japan"])
-def test_blank_environment_falls_back_to_system_locale(module: str, system_language: str, monkeypatch) -> None:
+@pytest.mark.parametrize(("system_language", "expected"), [
+    ("zh_CN", "zh"),
+    ("Chinese_China", "zh"),
+    ("ja_JP", "ja"),
+    ("Japanese_Japan", "ja"),
+])
+def test_blank_environment_falls_back_to_system_locale(module: str, system_language: str, expected: str, monkeypatch) -> None:
     messages = importlib.import_module(module)
     monkeypatch.setattr(messages.locale, "getlocale", lambda: (system_language, "UTF-8"))
-    assert messages.resolve_language({"DSH_LANG": " ", "LC_ALL": ""}) == "ja"
+    assert messages.resolve_language({"DSH_LANG": " ", "LC_ALL": ""}) == expected
     assert messages.resolve_language({"DSH_LANG": "fr"}) == "en"
     monkeypatch.setattr(messages.locale, "getlocale", lambda: (None, None))
     assert messages.resolve_language({}) == "en"

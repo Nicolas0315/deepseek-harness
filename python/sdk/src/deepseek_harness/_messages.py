@@ -8,7 +8,7 @@ import re
 from collections.abc import Mapping
 from typing import Literal
 
-Language = Literal["en", "ja"]
+Language = Literal["en", "zh", "ja"]
 
 
 def resolve_language(env: Mapping[str, str] | None = None, language: Language | None = None) -> Language:
@@ -19,9 +19,11 @@ def resolve_language(env: Mapping[str, str] | None = None, language: Language | 
     for name in ("DSH_LANG", "LC_ALL", "LC_MESSAGES", "LANG"):
         value = values.get(name, "").strip()
         if value:
-            return "ja" if re.split(r"[-_.@]", value.lower())[0] in ("ja", "japanese") else "en"
+            primary = re.split(r"[-_.@]", value.lower())[0]
+            return "zh" if primary in ("zh", "chinese") else "ja" if primary in ("ja", "japanese") else "en"
     system = locale.getlocale()[0] or ""
-    return "ja" if re.split(r"[-_.@]", system.lower())[0] in ("ja", "japanese") else "en"
+    primary = re.split(r"[-_.@]", system.lower())[0]
+    return "zh" if primary in ("zh", "chinese") else "ja" if primary in ("ja", "japanese") else "en"
 
 
 def message(key: str, language: Language | None = None, **parameters: object) -> str:
@@ -71,5 +73,26 @@ CATALOGS: dict[Language, dict[str, str]] = {
         "home_required": "HarnessConfig には明示的な dsh_home または空でない DSH_HOME が必要です。Python SDK は ~/.dsh を暗黙に使用しません",
         "office_empty": "Office CLI が診断メッセージを出さずに終了しました。",
         "office_invalid": "Office CLI が無効な結果を返しました。"
+    },
+    "zh": {
+        "config_options": "请传入 DeepSeekHarnessConfig 或关键字选项之一，不能同时传入",
+        "finish_reason": "turn/end 事件需要字符串 data.reason.kind",
+        "shutdown_failed": "关闭请求失败：{error}",
+        "stdin_close_failed": "关闭标准输入失败：{error}",
+        "runtime_closed": "DeepSeek Harness 运行时已关闭",
+        "selected_profile": "已选择 dsh 配置文件 {profile!r}",
+        "response_object": "{method} 响应必须是 JSON 对象",
+        "request_timeout": "等待 DeepSeek Harness 运行时的 {method} 超时{suffix}",
+        "not_running": "DeepSeek Harness 运行时未运行",
+        "write_failed": "写入 DeepSeek Harness 运行时失败",
+        "stdout_closed": "DeepSeek Harness 运行时标准输出已关闭",
+        "rpc_error": "JSON-RPC 错误",
+        "exit_code": "退出代码：{code}",
+        "stderr_tail": "标准错误末尾：\n",
+        "runtime_missing": "无法找到随附的 DeepSeek Harness dsh 运行时。请安装 deepseek-harness-runtime-bin。",
+        "home_empty": "HarnessConfig 需要非空 dsh_home",
+        "home_required": "HarnessConfig 需要显式 dsh_home 或非空 DSH_HOME；Python SDK 不会隐式使用 ~/.dsh",
+        "office_empty": "Office CLI 退出时未提供诊断。",
+        "office_invalid": "Office CLI 返回了无效结果。"
     }
 }

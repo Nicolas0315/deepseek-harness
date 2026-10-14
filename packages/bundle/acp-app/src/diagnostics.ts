@@ -1,4 +1,4 @@
-/** Source-owned English and Japanese human diagnostics. Parameters retain original diagnostic data. */
+/** Source-owned English, Chinese, and Japanese human diagnostics. Parameters retain original diagnostic data. */
 
 import { resolveDiagnosticLocale, type DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 
@@ -16,13 +16,19 @@ const japanese: Messages = {
   serveAutomationClientsOverAgentClientProtocolStdio: '標準入出力の Agent Client Protocol 経由で自動化クライアントに接続を提供します。',
 }
 
+const chinese: Messages = {
+  exampleDshProfileAcpServeACPUntilTheClient: '\n示例：\n  dsh --profile acp     提供 ACP 服务，直到客户端断开连接\n',
+  showThisHelp: '显示此帮助',
+  serveAutomationClientsOverAgentClientProtocolStdio: '通过 Agent Client Protocol 标准输入输出为自动化客户端提供服务。',
+}
+
 /**
  * Select one complete diagnostic catalog for an operation.
  * @param locale - captured invocation language; direct API callers default to their process locale.
- * @returns the English or Japanese catalog with identical keys and parameter lists.
+ * @returns the English, Chinese, or Japanese catalog with identical keys and parameter lists.
  */
 export function diagnosticMessages(
   locale: DiagnosticLocale = resolveDiagnosticLocale(process.env, Intl.DateTimeFormat().resolvedOptions().locale),
 ): Messages {
-  return locale === 'ja' ? japanese : english
+  return locale === 'ja' ? japanese : locale === 'zh' ? chinese : english
 }

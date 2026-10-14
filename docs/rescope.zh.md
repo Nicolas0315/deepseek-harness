@@ -50,4 +50,6 @@ pnpm run rescope-vendor:check      # assert the post-state; runs in the hygiene 
 pnpm run rescope-vendor --apply --reverse   # return to the upstream names
 ```
 
+产品还将 `cordis` 用作持久化预设 ID 和事件前缀。脚本只在明确列出的产品文件中保留这些值；同一文件中的包导入、解析和 mock 标识符仍按映射改名。
+
 上游 sync 之后重跑它（[流程](../vendor/README.md)），并接上它打印的重生成：`pnpm install` 重生成 lockfile、`pnpm run gen-third-party-notices`、以及对它触及的双语对跑 `pnpm run verify-translation-pairing --write`。

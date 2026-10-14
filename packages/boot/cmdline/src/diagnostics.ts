@@ -17,13 +17,19 @@ const japanese: typeof english = {
   missingAction: (name: string) => `${name}: 実行処理を持つコマンドがありません。parseCmdline は解析成功時に呼び出したコマンドの処理を実行し、アプリはそこでサービスを提供する必要があります`,
 }
 
+const chinese: typeof english = {
+  missingStdioHost: '标准输入输出应用：启动器必须在挂载树之前提供 ctx.appExit 和 ctx.appReady',
+  missingCmdlineHost: (name: string) => `${name}：启动器必须在挂载树之前提供 ctx.cmdlineArgs 和 ctx.appExit`,
+  missingAction: (name: string) => `${name}：程序中没有命令声明操作；parseCmdline 会在解析成功时运行所调用命令的操作，应用代码必须在那里提供服务`,
+}
+
 /**
  * Select complete app-command diagnostics for the captured language.
  * @param locale - language captured for this app invocation.
  * @returns the catalog of launcher integration diagnostics.
  */
 export function diagnosticMessages(locale: DiagnosticLocale): typeof english {
-  return locale === 'ja' ? japanese : english
+  return locale === 'ja' ? japanese : locale === 'zh' ? chinese : english
 }
 
 const japaneseTitles: Readonly<Record<string, string>> = {
@@ -42,6 +48,24 @@ const japaneseErrors: Readonly<Record<string, string>> = {
   'commander.invalidArgument': '引数の値を受け付けられません。下記の詳細と --help を確認してください。',
   'commander.unknownCommand': '指定したコマンドは使用できません。--help でコマンドを確認してください。',
   'commander.conflictingOption': '同時に指定できないオプションがあります。--help で組み合わせを確認してください。',
+}
+
+const chineseTitles: Readonly<Record<string, string>> = {
+  'Usage:': '用法：',
+  'Arguments:': '参数：',
+  'Options:': '选项：',
+  'Commands:': '命令：',
+}
+
+const chineseErrors: Readonly<Record<string, string>> = {
+  'commander.unknownOption': '指定的选项不可用。请使用 --help 查看可用选项。',
+  'commander.optionMissingArgument': '缺少选项值。请使用 --help 查看所需的值。',
+  'commander.missingMandatoryOptionValue': '缺少必填选项。请使用 --help 查看所需选项。',
+  'commander.missingArgument': '缺少必填参数。请使用 --help 查看参数说明。',
+  'commander.excessArguments': '参数过多。请使用 --help 查看可接受的参数。',
+  'commander.invalidArgument': '无法接受该参数值。请查看下方详情和 --help。',
+  'commander.unknownCommand': '指定的命令不可用。请使用 --help 查看命令。',
+  'commander.conflictingOption': '有不能同时使用的选项。请使用 --help 查看组合方式。',
 }
 
 /**
@@ -66,8 +90,9 @@ export function resolveCommandLocale(ctx?: Context): DiagnosticLocale {
  * @returns localized guidance and the untouched dependency diagnostic, or the original application message.
  */
 export function formatCommandError(locale: DiagnosticLocale, message: string, code?: string): string {
-  const explanation = code === undefined ? undefined : japaneseErrors[code]
-  return locale === 'ja' && explanation !== undefined ? `${explanation}\nCommander 原文: ${message}` : message
+  const explanation = code === undefined ? undefined : locale === 'ja' ? japaneseErrors[code] : locale === 'zh' ? chineseErrors[code] : undefined
+  const label = locale === 'ja' ? 'Commander 原文' : 'Commander 原始诊断'
+  return explanation === undefined ? message : `${explanation}\n${label}: ${message}`
 }
 
 /**
@@ -77,7 +102,10 @@ export function formatCommandError(locale: DiagnosticLocale, message: string, co
  * @param locale - captured invocation language.
  */
 export function configureCommandLocale(command: Command, locale: DiagnosticLocale): void {
-  if (locale === 'ja') command.configureHelp({ styleTitle: title => japaneseTitles[title] ?? title })
+  if (locale === 'ja' || locale === 'zh') {
+    const titles = locale === 'ja' ? japaneseTitles : chineseTitles
+    command.configureHelp({ styleTitle: title => titles[title] ?? title })
+  }
   const error = command.error.bind(command)
   command.error = (message, options) => error(formatCommandError(locale, message, options?.code), options)
   for (const child of command.commands) configureCommandLocale(child, locale)

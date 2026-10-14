@@ -1,4 +1,4 @@
-/** Source-owned English and Japanese human diagnostics. Parameters retain original diagnostic data. */
+/** Source-owned English, Chinese, and Japanese human diagnostics. Parameters retain original diagnostic data. */
 
 import type { Context } from '@deepseek-ai/cordis'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
@@ -238,15 +238,133 @@ ${value1}`,
   unknown: '不明',
 }
 
+const chinese: Messages = {
+  profileCompatibilityPreflightRequiresAResolutionBase: 'Profile 兼容性预检查需要解析基准',
+  mustBeALiteralString: (value0: string) => `${value0} 必须是字面字符串`,
+  groupMustBeALiteralBooleanOrNull: 'group 必须是字面布尔值或 null',
+  eachEntryMustBeAMappingWithALiteral: '每个条目必须是带字面 plugin 名称的映射',
+  entryListConfigIsMissing: '缺少条目列表配置',
+  expectedALiteralEntryListConfigExpressionsAreNot: '应为字面条目列表；不计算配置表达式',
+  includePatchesMustBeALiteralPatchListConfig: 'include patches 必须是字面 patch 列表；不计算配置表达式',
+  includePatchesMustBeLiteralMappingsConfigExpressionsAre: 'include patches 必须是字面映射；不计算配置表达式',
+  configSchemaDumpRequiresTheNodeModuleLoaderUsed: '配置 schema 转储需要 profile 解析所用的 Node 模块加载器',
+  unrecognizedLoaderTreeCarrierUseCordisGroupOrCordis: '无法识别的 Loader 树载体；请用 cordis:group 或 cordis:include 收集原生子项',
+  includeConfigIsMissing: '缺少 include 配置',
+  includeConfigMustBeLiteralConfigExpressionsAreNot: 'include 配置必须是字面值；不计算配置表达式',
+  includePathMustBeLiteralConfigExpressionsAreNot: 'include 路径必须是字面值；不计算配置表达式',
+  includeExtensionIsNotSupported: (value0: string) => `不支持 include 扩展名 ${value0}`,
+  includeCycleAt: (value0: string) => `include 在 ${value0} 处形成循环`,
+  includeFileNotFound: (value0: string) => `未找到 include 文件：${value0}`,
+  invalidInclude: (value0: string, value1: string, value2: string) => `无效的 ${value0} include ${value1}${value2}`,
+  includePatchesCouldNotBeComposedForChildDeclarations: (value0: string) => `无法为 ${value0} 组合 include patches；子声明不可用`,
+  unknownCordisBuiltin: (value0: string) => `未知 Cordis 内置项 ${value0}`,
+  schemaAnnotationIsNotJSONCompatible: 'schema 注释与 JSON 不兼容',
+  schemaAnnotationContainsACycle: 'schema 注释包含循环',
+  schemaAnnotationContainsANonJSONObject: 'schema 注释包含非 JSON 对象',
+  volatileFieldsRequireAFixedObjectPathWithoutAn: (value0: string) => `${value0}：易变字段需要固定对象路径，且外层不能是易变字段`,
+  lazyCycleHasNoConcreteSchema: (value0: string) => `${value0}：惰性循环没有具体 schema`,
+  lazySchemaHasNoNativeBuilderResultOrResolved: (value0: string) => `${value0}：惰性 schema 没有原生构建器结果或已解析的内部 schema`,
+  schemaIsMissing: (value0: string, value1: string, value2: string) => `${value0}：${value1} schema 缺少 ${value2}`,
+  tupleSchemaIsMissingItsList: (value0: string) => `${value0}：tuple schema 缺少列表`,
+  unionSchemaIsMissingItsList: (value0: string) => `${value0}：union schema 缺少列表`,
+  setsWhichOnlyTheLaunchingEnvironmentMaySetIt: (value0: string, value1: string, value2: string, value3: string) => `${value0}：${value1} 设置了“${value2}”，只有启动环境可以设置它（它决定进程如何启动、代码和指令从何处加载或如何访问网络）；${value3}`,
+  profileReloadRequiresTheRootIncludeEntry: (value0: string) => `${value0}：profile 重新加载需要根 Include 条目`,
+  failedToReadPatches: (value0: string, value1: string, value2: string) => `${value0}：无法读取 patches ${value1}：${value2}`,
+  failedToReadOverlay: (value0: string, value1: string, value2: string) => `${value0}：无法读取 overlay ${value1}：${value2}`,
+  failedToParse: (value0: string, value1: string, value2: string, value3: string) => `${value0}：无法解析 ${value1} ${value2}：${value3}`,
+  mustBeATopLevelYAMLArrayOfLoader: (value0: string, value1: string, value2: string) => `${value0}：${value1} ${value2} 必须是 loader patch 条目的顶层 YAML 数组`,
+  entryInMustBeAMappingALoaderPatch: (value0: string, value1: string, value2: string, value3: string) => `${value0}：${value3} 中的 ${value1} 条目 ${value2} 必须是映射（loader patch 条目）`,
+  failedToReadConfig: (value0: string, value1: string, value2: string) => `${value0}：无法读取配置 ${value1}：${value2}`,
+  failedToParseConfig: (value0: string, value1: string, value2: string) => `${value0}：无法解析配置 ${value1}：${value2}`,
+  configMustBeATopLevelYAMLArrayOf: (value0: string, value1: string) => `${value0}：配置 ${value1} 必须是条目的顶层 YAML 数组`,
+  pluginActivationFailures: 'Plugin 激活失败',
+  iconMustBeARelativeFilePath: (value0: string) => `${value0}：图标必须是相对文件路径`,
+  iconMustRemainInsideItsManifestDirectory: (value0: string) => `${value0}：图标必须保留在其 manifest 目录内`,
+  iconMustBeSVGPNGJPEGOrWebP: (value0: string) => `${value0}：图标必须是 SVG、PNG、JPEG 或 WebP`,
+  iconMustBeARegularFile: (value0: string) => `${value0}：图标必须是普通文件`,
+  iconExceedsKiB: (value0: string) => `${value0}：图标超过 256 KiB`,
+  iconMustRemainInsideItsPackageDirectory: (value0: string) => `${value0}：图标必须保留在其 package 目录内`,
+  pluginMetadataRequiresTheNodeModuleResolver: 'Plugin 元数据需要 Node 模块解析器',
+  mustBeAnObject: (value0: string) => `${value0} 必须是对象`,
+  mustBeANonEmptyString: (value0: string) => `${value0} 必须是非空字符串`,
+  mustUseALanguageIdAsItsFilename: (value0: string) => `${value0} 必须使用语言 ID 作为文件名`,
+  duplicatesLocale: (value0: string, value1: string) => `${value0} 重复 locale ${value1}`,
+  mustShareTheEnglishLocaleDirectory: (value0: string, value1: string, value2: string) => `${value0}：${value1} 必须共享英语 locale 目录 ${value2}`,
+  invalidDshRuntimeVersionExpectedASemanticVersion: (value0: string) => `无效的 dsh runtime 版本：${value0}；应为语义版本`,
+  pluginManifestMustBeANonEmptyStringWhen: (value0: string) => `dsh peers 不兼容时，Plugin manifest ${value0} 必须是非空字符串`,
+  pluginManifestPeerDependenciesMustBeAString: (value0: string) => `Plugin manifest peerDependencies[${value0}] 必须是字符串`,
+  versionExemptionsRequireAnExactNpmPackageNameVersion: '版本例外需要精确的 npm package-name@version 和精确的 DSH runtime 版本',
+  incompatiblePluginsMayCauseCrashesOrDataLossTo: '不兼容的 plugin 可能导致崩溃或数据丢失。要授予此精确版本例外，请用 --accept-risk（acceptRisk: true）明确确认风险。',
+  cannotApproveDSHThisApplicationRunsDSHUseDsh: (value0: string, value1: string, value2: string) => `无法批准 DSH ${value0}：此应用运行 DSH ${value1}。请使用 --dsh-version ${value2}。`,
+  mustBeRepairedBeforeExemptionsChange: (value0: string, value1: string) => `更改例外前必须修复 ${value0}：
+${value1}`,
+  profileResolutionASuccessorCannotChangeItsProfileScope: 'profile 解析：后继项不能改变 profile 作用域',
+  profileResolutionReplacingRequiresAProcessRestart: (value0: string) => `profile 解析：替换 ${value0} 需要重启进程`,
+  profileResolutionOverridingLocallyRequiresAProcessRestart: (value0: string) => `profile 解析：本地覆盖 ${value0} 需要重启进程`,
+  profileResolutionRelinkingRequiresAProcessRestart: (value0: string) => `profile 解析：重新链接 ${value0} 需要重启进程`,
+  profileResolutionUnsupportedNodeModuleLoader: 'profile 解析：不支持的 Node 模块加载器',
+  pluginPackagesRuntimeResolutionIsNotInstalled: 'plugin-packages：未安装 runtime 解析',
+  pluginPackagesTheInstalledRuntimeResolutionCannotBeRecomputed: 'plugin-packages：无法重新计算已安装的 runtime 解析',
+  dshBundlePatchMustBeAFilePathOr: 'dsh.bundle.patch 必须是文件路径或文件路径列表',
+  dshInvalidProfileName: (value0: string) => `dsh：无效的 profile 名称 ${value0}`,
+  failedToReadProfileManifest: (value0: string, value1: string, value2: string) => `${value0}：无法读取 profile manifest ${value1}：${value2}`,
+  profileManifestMustHoldAJSONObject: (value0: string, value1: string) => `${value0}：profile manifest ${value1} 必须包含 JSON 对象`,
+  cannotResolveProfileBundleFromTheDshInstallationOr: (value0: string, value1: string, value2: string, value3: string) => `${value0}：无法从 dsh 安装或 ${value2} 解析 profile bundle ${value1}；依赖未安装时请运行 'dsh plugin --profile ${value3} install'`,
+  profileBundleDeclaresNoDshBundleInItsPackage: (value0: string, value1: string) => `${value0}：profile bundle ${value1} 未在 package.json 中声明 dsh.bundle`,
+  profileDoesNotExistCreateItWithDshPlugin: (value0: string, value1: string, value2: string) => `${value0}：profile ${value1} 不存在；请用 'dsh plugin --profile ${value2} add <package>' 创建`,
+  envLoadFailed: (value0: string, value1: string) => `${value0}：无法加载 .env：${value1}
+`,
+  proxyEnvRemedy: (value0: string, value1: string) => `请 export ${value0}，或放入不随 repository 传播的 ${value1}`,
+  envRemedy: (value0: string) => `请 export ${value0}，不要放入 .env 文件`,
+  patchedBy: (value0: string, value1: string) => `${value0}，由 ${value1} patch`,
+  fatalLoad: '致命加载失败',
+  fatalException: '未捕获的致命异常',
+  disabledExpressionFailed: 'disabled 表达式失败',
+  failedImport: '导入失败',
+  fiberState: (value0: string) => `fiber 状态 ${value0}`,
+  hostPreparationFailed: 'Host 准备失败',
+  pluginTreeFailed: 'Plugin 树加载失败',
+  profileBundleSkipped: (value0: string, value1: string, value2: string) => `${value0}：跳过 profile bundle ${value1}：${value2}
+`,
+  profilePluginDisabled: (value0: string, value1: string, value2: string) => `${value0}：禁用 profile plugin ${value1}：${value2}
+`,
+  peerValidationFailed: (value0: string) => `无法验证其声明的 peer dependencies：${value0}`,
+  incompatibleInclude: (value0: string) => `其 include 的文件 ${value0} 包含不兼容 plugin，且绝不重写该文件`,
+  metadataFailure: (value0: string, value1: string) => `${value0} 的 Plugin 元数据：${value1}`,
+  noExemptions: (value0: string, value1: string) => `${value0} ${value1}；将此 profile 视为没有例外`,
+  compatibilityUnreadable: (value0: string) => `无法读取（${value0}）`,
+  compatibilityInvalidJson: (value0: string) => `不是有效 JSON（${value0}）`,
+  compatibilityMapping: '必须将精确 package@version 键映射到 DSH 版本列表',
+  invalidExemptionKey: (value0: string, value1: string) => `${value0}：${value1} 不是精确 package-name@version 键；忽略该记录`,
+  invalidExemptionVersions: (value0: string, value1: string) => `${value0}：${value1} 必须包含精确 DSH 版本列表；忽略该记录`,
+  pluginManifest: '插件清单',
+  pluginManifestPeers: '插件清单 peerDependencies',
+  activeExemption: '有效',
+  inactiveExemption: '未生效',
+  pluginIncompatible: (value0: string, value1: string, value2: string, value3: string, value4: string, value5: string) => `Plugin ${value0} 与 dsh ${value1} 不兼容：peerDependencies ${value2}。运行可能导致崩溃或数据丢失。请更新 plugin 或安装与此 dsh runtime 兼容的版本。要明确接受风险，请通过 \`dsh plugin allow-version\` 或插件管理器授予 ${value3} 在 dsh ${value4} 的精确版本例外，然后重试安装或重启 dsh。精确版本例外：${value5}。`,
+  optionalActivation: (binName: string, count: number, details: string) => `${binName}：警告：${String(count)} 个条目未激活
+${details}
+`,
+  pendingServices: (_count: number, missing: string) => `待定（等待服务：${missing}）`,
+  startupFailed: (binName: string, count: number) => `${binName}：启动失败：${String(count)} 个必需 plugin 未激活`,
+  required: '（必需）',
+  failedPlugins: (count: number) => `失败的 plugin（${String(count)}）：`,
+  packageLabel: '包：',
+  pendingPlugins: (count: number) => `等待服务的 plugin（${String(count)}）：`,
+  pluginLabel: '插件',
+  missingServices: '缺少服务',
+  unknown: '未知',
+}
+
 /**
  * Select one complete diagnostic catalog for an operation.
  * @param locale - captured invocation language; direct API callers default to their process locale.
- * @returns the English or Japanese catalog with identical keys and parameter lists.
+ * @returns the English, Chinese, or Japanese catalog with identical keys and parameter lists.
  */
 export function diagnosticMessages(
   locale: DiagnosticLocale = defaultDiagnosticLocale(),
 ): Messages {
-  return locale === 'ja' ? japanese : english
+  return locale === 'ja' ? japanese : locale === 'zh' ? chinese : english
 }
 
 /**
@@ -264,7 +382,7 @@ export function resolveBootLocale(ctx: Context): DiagnosticLocale {
 
 /**
  * Capture the process preference for a standalone boot operation.
- * @returns English or Japanese for all nested diagnostics in that operation.
+ * @returns English, Chinese, or Japanese for all nested diagnostics in that operation.
  */
 export function defaultDiagnosticLocale(): DiagnosticLocale {
   return resolveDiagnosticLocale(process.env, Intl.DateTimeFormat().resolvedOptions().locale)

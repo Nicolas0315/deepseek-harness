@@ -50,4 +50,6 @@ pnpm run rescope-vendor:check      # assert the post-state; runs in the hygiene 
 pnpm run rescope-vendor --apply --reverse   # return to the upstream names
 ```
 
+The product also uses `cordis` as a persisted preset ID and event prefix. The script preserves those values only in its explicit product-file list; package import, resolution, and mock specifiers in the same files still follow the mapping.
+
 Re-apply it after an upstream sync ([procedure](../vendor/README.md)), and follow it with the regeneration it prints: `pnpm install` for the lockfile, `pnpm run gen-third-party-notices`, and `pnpm run verify-translation-pairing --write` for the bilingual pairs it touched.

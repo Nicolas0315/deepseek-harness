@@ -9,6 +9,9 @@
   ],
   "references": [
     {
+      "path": "../../boot/cmdline"
+    },
+    {
       "path": "../../../vendor/cordis"
     },
     {

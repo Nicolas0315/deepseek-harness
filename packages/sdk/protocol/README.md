@@ -29,7 +29,7 @@ Use this package when you build or debug an SDK wire end — the serving plugin,
 
 ### Framing and transport
 
-The optional third `JsonRpcLineTransport` constructor argument selects `en` or `ja` diagnostics for that endpoint. Otherwise it captures `DSH_LANG`, `LC_ALL`, `LC_MESSAGES`, `LANG`, then the system locale; the `ja` primary language selects Japanese and other values select English. Only transport-owned fixed text is localized; method names, JSON fields, error codes/data, peer messages, and caller abort reasons remain verbatim.
+The optional third `JsonRpcLineTransport` constructor argument selects `en`, `zh`, or `ja` diagnostics for that endpoint. Otherwise it captures `DSH_LANG`, `LC_ALL`, `LC_MESSAGES`, `LANG`, then the system locale; `zh` selects Chinese, `ja` selects Japanese, and other values select English. Only transport-owned fixed text is localized; method names, JSON fields, error codes/data, peer messages, and caller abort reasons remain verbatim.
 
 Wire one JSON-RPC 2.0 message per `\n`-terminated line over byte streams you own. A frame with both `id` and `method` is a request, `id` alone is a response, and `method` alone is a notification; malformed lines are ignored. Requests with no registered handler answer `-32601`, handler failures answer `-32603`, and error responses reject the pending request with `JsonRpcResponseError`, which preserves the wire `code` and optional `data`. `start()` attaches stream listeners and `close()` detaches them and rejects pending requests without destroying the streams.
 

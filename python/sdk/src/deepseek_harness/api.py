@@ -38,7 +38,7 @@ class DeepSeekHarnessConfig:
     shutdown_timeout_seconds: float | None = 1.0
     base_url: str | None = None
     api_key: str | None = None
-    language: Literal["en", "ja"] | None = None
+    language: Literal["en", "zh", "ja"] | None = None
 
 
 @dataclass(slots=True)
@@ -244,7 +244,7 @@ def final_response(events: list[JsonObject]) -> str:
     return ""
 
 
-def finish_reason(events: list[JsonObject], *, language: Literal["en", "ja"] | None = None) -> str | None:
+def finish_reason(events: list[JsonObject], *, language: Literal["en", "zh", "ja"] | None = None) -> str | None:
     """Return the last turn-ending kind.
 
     The input must contain root-session events from one owned run interval.

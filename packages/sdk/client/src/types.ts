@@ -6,6 +6,7 @@
  */
 
 import type { ContentBlock, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import type { SdkPromptContentBlock } from '@deepseek-ai/dsh-sdk-protocol'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 
@@ -23,7 +24,7 @@ export type NotificationFilter = (notification: HarnessNotification) => boolean
 /** Launch and timeout options for {@link HarnessClient}. */
 export interface HarnessClientOptions {
   /** Diagnostic language; omitted captures DSH_LANG, locale environment, then system locale. */
-  language?: 'en' | 'ja'
+  language?: DiagnosticLocale
   /** Absolute or caller-relative dsh CLI module; omitted resolves this package's same-version dependency. */
   dshBin?: string
   /** Named profile serving the SDK protocol (default `sdk`). */

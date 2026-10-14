@@ -32,6 +32,7 @@ type WireEvent =
 
 interface ApplyHarness {
   ctx: Context
+  input: PassThrough
   /** The plugin fiber used by the bare-dispose case. */
   fiber: Awaited<ReturnType<Context['plugin']>>
   /** Frames, write completions, and exits in observation order. */
@@ -134,6 +135,7 @@ async function mountPlugin(
     events.flatMap(event => event.kind === 'frame' ? [event.frame] : [])
   return {
     ctx,
+    input,
     fiber,
     events,
     outputErrors,
@@ -172,7 +174,73 @@ async function mockCompletionServer(): Promise<{ url: string; requests: unknown[
   return { url: `http://127.0.0.1:${address.port}`, requests }
 }
 
+function controlledStartup() {
+  let ready = false
+  const listeners = new Set<() => void>()
+  return {
+    service: {
+      onReady(listener: () => void): () => void {
+        if (ready) {
+          listener()
+          return () => {}
+        }
+        listeners.add(listener)
+        return () => { listeners.delete(listener) }
+      },
+    },
+    pending: () => listeners.size,
+    commit: () => {
+      ready = true
+      for (const listener of listeners) listener()
+      listeners.clear()
+    },
+  }
+}
+
 describe('dsh-sdk-jsonrpc-server plugin apply', () => {
+  it.each([false, true])('accepts buffered initialization only after successful startup (already ready: %s)', async (alreadyReady) => {
+    const storageDir = await mkdtemp(join(tmpdir(), 'dsh-jsonrpc-startup-commit-'))
+    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    const startup = controlledStartup()
+    if (alreadyReady) startup.commit()
+    const harness = await mountPlugin(storageDir, {
+      beforeServer: (ctx) => { ctx.provide('appReady', startup.service) },
+    })
+    try {
+      expect(harness.input.listenerCount('data')).toBe(alreadyReady ? 1 : 0)
+      harness.send({ jsonrpc: '2.0', id: 'startup-init', method: 'initialize', params: { cwd: storageDir, provider: 'deepseek-official', model: 'apply-model' } })
+      if (!alreadyReady) {
+        expect(startup.pending()).toBe(1)
+        expect(harness.frames()).toEqual([])
+        startup.commit()
+      }
+      expect(await harness.waitForFrame(frame => frame.id === 'startup-init', 'initialization after startup commit'))
+        .toMatchObject({ result: { serverInfo: { name: 'deepseek-harness-sdk-runtime' } } })
+    } finally {
+      await harness.dispose()
+      await rm(storageDir, { recursive: true, force: true })
+    }
+  })
+
+  it('cancels pending startup admission before disposal completes', async () => {
+    const storageDir = await mkdtemp(join(tmpdir(), 'dsh-jsonrpc-startup-dispose-'))
+    const startup = controlledStartup()
+    const harness = await mountPlugin(storageDir, {
+      beforeServer: (ctx) => { ctx.provide('appReady', startup.service) },
+    })
+    try {
+      expect(startup.pending()).toBe(1)
+      await harness.dispose()
+      expect(startup.pending()).toBe(0)
+      startup.commit()
+      expect(harness.input.listenerCount('data')).toBe(0)
+      expect(harness.frames()).toEqual([])
+    } finally {
+      await harness.dispose()
+      await rm(storageDir, { recursive: true, force: true })
+    }
+  })
+
   it('serves initialize over the injected stdio pair', async () => {
     const storageDir = await mkdtemp(join(tmpdir(), 'dsh-jsonrpc-apply-init-'))
     vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')

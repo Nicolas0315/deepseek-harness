@@ -1,4 +1,4 @@
-/** Source-owned English and Japanese human diagnostics. Parameters retain original diagnostic data. */
+/** Source-owned English, Chinese, and Japanese human diagnostics. Parameters retain original diagnostic data. */
 
 import { resolveDiagnosticLocale, type DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 
@@ -128,13 +128,75 @@ ${value1}`,
 `,
 }
 
+const chinese: Messages = {
+  selectAProfileOnlyOnce: '只能选择一次 profile',
+  errorProfileDesktopIsManagedExclusivelyByTheElectron: '错误：profile“desktop”仅由 Electron 应用程序管理',
+  errorPatchNeedsAPath: '错误：--patch 需要路径',
+  errorFromDefaultProfileNeedsAName: '错误：--from-default-profile 需要名称',
+  errorDumpConfigDumpDefaultConfigAndDumpConfig: '错误：--dump-config、--dump-default-config 和 --dump-config-schema 互斥',
+  errorConfigDumpsTakeNoAppArgumentsGot: (value0: string) => `错误：配置转储不接受应用参数，得到 ${value0}`,
+  errorDumpDefaultConfigPrintsTheBundleLayersAnd: '错误：--dump-default-config 输出 bundle 层且不接受 --patch',
+  printTheProfileTreeWithoutItsUserLayerOr: '输出不含用户层或 --patch 覆盖层的 profile 树后退出',
+  printJSONSchemaForProfileEntriesAndPatchesWithout: '不挂载即输出 profile 条目和 patch 的 JSON Schema',
+  printTheComposedProfileTreeAndExit: '输出已组合的 profile 树后退出',
+  extraPatchListOverlayAppliedAfterTheProfileLayer: '在 profile 层后应用的额外 patch-list 覆盖层（可重复）',
+  initializeANewCustomProfileFromAShippedProfile: '从随附的 profile 模板初始化新的自定义 profile',
+  theProfileUnderDSHHOMEProfilesToBoot: '要启动的 $DSH_HOME/profiles 下的 profile',
+  argumentsForTheBootedProfileSAppSeeDsh: '启动的 profile 应用程序的参数（参见：dsh --profile <name> --help）',
+  dshBootADeepSeekHarnessProfileAnOrderedStack: 'dsh：启动 DeepSeek Harness profile——在您的覆盖层下按顺序叠加插件 bundle patch 层。',
+  outputTheVersionNumber: '输出版本号',
+  errorProfileNameIsRequired: '错误：需要 --profile <name>',
+  errorProfileNeedsAName: '错误：--profile 需要名称',
+  manageAProfileSPluginsByForwardingTheRemaining: '将剩余参数转交给 profile 目录中的 pnpm，以管理 profile 的插件',
+  pnpmArgumentsForwardedVerbatimAddPkgRemovePkgWhy: '原样转交的 pnpm 参数（add <pkg>、remove <pkg>、why <pkg> 等）',
+  theProfileWhosePluginsToManageInitializedOnFirst: '要管理插件的 profile（首次使用时初始化）',
+  showThisHelp: '显示此帮助',
+  errorPluginNeedsPnpmArgumentsToForwardEG: '错误：plugin 需要转交给 pnpm 的参数（例如 add <package>）',
+  dshNoInvocationResolved: 'dsh：未解析到调用方式',
+  dshUnhandledInvocationMode: (value0: string) => `dsh：未处理的调用模式 ${value0}`,
+  openDeepSeekHarnessDesktopOnceToInitializeItsProfile: '请打开一次 DeepSeek Harness Desktop 以初始化其 profile，然后完全退出，再运行 dsh plugin --profile desktop。',
+  unexpectedArgument: (value0: string) => `意外参数 ${value0}`,
+  usageDshPluginVersionExemptions: '用法：dsh plugin version-exemptions',
+  usageDshPluginPackageVersionDshVersionExact: (value0: string, value1: string) => `用法：dsh plugin ${value0} <package@version> --dsh-version <exact>${value1}`,
+  unknownDefaultProfileExpectedOneOf: (value0: string, value1: string, value2: string) => `${value0}：未知的默认 profile ${value1}；应为以下之一：${value2}`,
+  profileIsShippedAndCannotBeACustomProfile: (value0: string, value1: string) => `${value0}：profile ${value1} 随附且不能作为自定义 profile 目标；省略 --from-default-profile 以使用它`,
+  profileAlreadyExistsAtOmitFromDefaultProfileTo: (value0: string, value1: string, value2: string) => `${value0}：profile ${value1} 已存在于 ${value2}；省略 --from-default-profile 以使用它`,
+  profileDirectoryAlreadyExistsChooseAnUnusedProfileName: (value0: string, value1: string) => `${value0}：profile 目录 ${value1} 已存在；请选择未使用的 profile 名称`,
+  profileInitializationFailedAndCouldNotBeRemoved: (value0: string, value1: string) => `${value0}：profile 初始化失败且无法移除 ${value1}`,
+  dshProfileCleanupFailed: 'dsh：profile 清理失败',
+  dshProfileStartupAndCleanupFailed: 'dsh：profile 启动和清理失败',
+  launcherExamples: '\n示例：\n  dsh web                                   启动 web profile（等同于：dsh --profile web）\n  dsh rescue --from-default-profile web\n                                            从随附 web 模板创建 rescue 后启动\n  dsh headless "运行测试"              回答一个任务，输出结果后退出\n  dsh tui --patch ./extra.yml               使用一个额外覆盖层启动自定义 profile\n  dsh tui --resume <session>                启动器标志后的参数会到达应用\n  dsh web --help                            web 应用自身的标志和帮助\n  dsh plugin --profile tui add <package>    将插件安装到 tui profile\n',
+  compatibilityRisk: 'dsh：警告：允许不兼容的插件版本可能损坏应用程序或数据。批准仅适用于精确的 package 和 DSH 版本。\n',
+  warning: (value0: string) => `dsh：警告：${value0}
+`,
+  allowed: '已允许',
+  revoked: '已撤销',
+  exemptionChanged: (value0: string, value1: string, value2: string) => `dsh：DSH ${value2} 的 ${value1} ${value0}
+`,
+  pnpmMissing: 'dsh：未找到 pnpm；请安装 pnpm 并使其在 PATH 中可用。\n',
+  acceptVersionRisk: (value0: string, value1: string, value2: string, value3: string) => `dsh：如要接受风险，请运行：dsh plugin --profile ${value0} allow-version ${value1}@${value2} --dsh-version ${value3} --accept-risk
+`,
+  pluginFailed: (value0: string) => `dsh：插件命令失败；诊断：${value0}
+`,
+  gitBuildApproval: (value0: string) => `dsh：Git 托管插件会在安装时通过 prepare 脚本构建，pnpm 会阻止它直到获得允许——请将上面 pnpm 输出的精确键添加到 ${value0} 的 allowBuilds 下，然后重新运行
+`,
+  diagnosticWarning: '警告：原始诊断可能包含插件错误中的配置或凭据值。分享前请检查。\n\n',
+  diagnosticSaveFailed: (value0: string, value1: string) => `
+dsh：警告：无法写入启动诊断：${value0}
+完整诊断：
+${value1}`,
+  diagnosticSaved: (value0: string) => `
+完整诊断：${value0}
+`,
+}
+
 /**
  * Select one complete diagnostic catalog for an operation.
  * @param locale - captured invocation language; direct API callers default to their process locale.
- * @returns the English or Japanese catalog with identical keys and parameter lists.
+ * @returns the English, Chinese, or Japanese catalog with identical keys and parameter lists.
  */
 export function diagnosticMessages(
   locale: DiagnosticLocale = resolveDiagnosticLocale(process.env, Intl.DateTimeFormat().resolvedOptions().locale),
 ): Messages {
-  return locale === 'ja' ? japanese : english
+  return locale === 'ja' ? japanese : locale === 'zh' ? chinese : english
 }

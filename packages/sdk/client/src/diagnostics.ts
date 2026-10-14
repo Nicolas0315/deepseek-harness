@@ -1,5 +1,5 @@
 /** Fixed SDK client diagnostics; interpolated runtime values remain verbatim. */
-import { resolveDiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
+import { resolveDiagnosticLocale, type DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 
 const en = {
   subscriptionClosed: () => 'notification subscription closed',
@@ -63,13 +63,44 @@ const ja = {
   turnData: (value: string) => `turn/end イベントのデータが不正です: ${value}`,
 } satisfies typeof en
 
+const zh = {
+  subscriptionClosed: () => '通知订阅已关闭',
+  clientClosed: () => 'DeepSeek Harness 运行时客户端已关闭',
+  notRunning: () => 'DeepSeek Harness 运行时未运行',
+  failedStart: () => 'DeepSeek Harness 运行时启动失败',
+  exited: () => 'DeepSeek Harness 运行时已退出',
+  closed: () => 'DeepSeek Harness 运行时已关闭',
+  identity: (value: string) => `initialize 未返回服务器标识：${value}`,
+  messageId: (value: string) => `session/prompt 未返回消息 ID：${value}`,
+  workingDirectory: (method: string, value: string) => `${method} 未返回工作目录：${value}`,
+  stderr: (value: string) => `标准错误末尾：\n${value}`,
+  spawn: (value: string) => `启动错误：${value}`,
+  exitCode: (value: string) => `退出代码：${value}`,
+  shutdown: (value: string) => `shutdown 请求失败：${value}`,
+  timeout: (method: string, ms: number, description: string, stderr: string) => `${description} 的 ${method} 等待 ${ms}ms 后超时${stderr}`,
+  initializationCleanup: () => 'DeepSeek Harness 初始化和清理失败',
+  version: (client: string, dsh: string) => `dsh SDK 客户端 ${client} 需要相同的 dsh 版本，实际为 ${dsh}`,
+  noExecutable: () => '@deepseek-ai/dsh 未声明 dsh 可执行文件',
+  missingExecutable: (bin: string, source: string, patch: string, config: string) => `@deepseek-ai/dsh 缺少已构建的可执行文件 ${bin} 和完整的源启动文件 ${source}、${patch}、${config}`,
+  profile: (profile: string) => `dsh 配置文件 ${profile}`,
+  killTimeout: (ms: number, accepted: boolean) => `SIGKILL ${accepted ? '已接受' : '被拒绝'}后，运行时进程未在 ${ms}ms 内退出`,
+  killFailed: () => 'SIGKILL 失败',
+  reasonEnvelope: (value: string) => `turn/end 未包含原因封装：${value}`,
+  abortedReason: (value: string) => `turn/end 包含格式错误的中止原因：${value}`,
+  hookReason: (value: string) => `turn/end 包含格式错误的钩子中止原因：${value}`,
+  unknownReason: (value: string) => `turn/end 包含未知中止原因：${value}`,
+  eventEnvelope: (value: string) => `session.event 未包含事件封装：${value}`,
+  messageContent: (value: string) => `assistant/message 事件包含格式错误的内容：${value}`,
+  turnData: (value: string) => `turn/end 事件包含格式错误的数据：${value}`,
+} satisfies typeof en
+
 /** Fixed diagnostics indexed by the captured instance language. */
-export const diagnostics = { en, ja }
+export const diagnostics = { en, zh, ja }
 
 /**
  * Resolve standalone helper diagnostics from the current environment.
  * @returns the selected diagnostic language.
  */
-export function defaultDiagnosticLocale(): 'en' | 'ja' {
+export function defaultDiagnosticLocale(): DiagnosticLocale {
   return resolveDiagnosticLocale(process.env, Intl.DateTimeFormat().resolvedOptions().locale)
 }

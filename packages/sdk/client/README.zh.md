@@ -87,7 +87,7 @@ console.log(result.finalResponse)
 
 ### 错误与关闭
 
-`language: 'en' | 'ja'` 为每个 SDK 实例选择诊断语言。省略时，客户端依次读取并固定 `DSH_LANG`、`LC_ALL`、`LC_MESSAGES`、`LANG`、系统区域设置；主语言为 `ja` 时使用日语，其余使用英语。子进程通过自己的 `DSH_LANG` 接收所选语言，父进程状态不变。只翻译 SDK 自有的固定消息；错误类、协议名称、JSON 载荷、stderr、模型文本及远端、提供方、进程错误均保持原样。
+`language: 'en' | 'zh' | 'ja'` 为每个 SDK 实例选择诊断语言。省略时，客户端依次读取并固定 `DSH_LANG`、`LC_ALL`、`LC_MESSAGES`、`LANG`、系统区域设置；主语言为 `zh` 时使用中文，为 `ja` 时使用日语，其余使用英语。子进程通过自己的 `DSH_LANG` 接收所选语言，父进程状态不变。只翻译 SDK 自有的固定消息；错误类、协议名称、JSON 载荷、stderr、模型文本及远端、提供方、进程错误均保持原样。
 
 每种失败模式都映射到一个导出的错误类——协议错误响应、请求时限已到、响应超出文档化协议、运行时死亡——调用方可以按失败类型分支处理；这四个类从 [src/index.ts](src/index.ts) 导出。关闭采用私有的幂等阶梯（stdin EOF → SIGTERM → SIGKILL），位于 [src/dispose.ts](src/dispose.ts)，只在进程真正退出时结束。
 

@@ -107,7 +107,7 @@ class OfficeOptions:
     font_directories: Sequence[str | os.PathLike[str]] | None = None
     initial_font_families: Sequence[str] | None = None
     font_fallbacks: Sequence[Sequence[str]] | None = None
-    language: Literal["en", "ja"] | None = None
+    language: Literal["en", "zh", "ja"] | None = None
     env: Mapping[str, str] | None = None
 
     def _arguments(self) -> list[str]:

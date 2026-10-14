@@ -42,7 +42,7 @@ primary_runtime = download_primary_runtime()
 
 ## Python 模块 API
 
-Python 自有诊断依次使用首个非空的 `DSH_LANG`、`LC_ALL`、`LC_MESSAGES` 或 `LANG`，最后使用系统区域设置。主语言为 `ja` 时选择日语，其他值选择英语。`resolve_bundled_launch_args()`、`download_office()`、`download_primary_runtime()` 和 `resolve_office_launch_args()` 接受仅限关键字的 `language="en" | "ja"` 和 `env`；显式语言优先。启动解析器使用 `env` 选择区域设置和运行时模式。下载和 Office 辅助函数将 `env` 合并到继承环境中，用于资源查找和子进程，并通过 `DSH_LANG` 传递所选语言。这些选项不修改调用方环境，也不增加 CLI 参数。外部进程诊断和退出状态保留原值。
+Python 自有诊断依次使用首个非空的 `DSH_LANG`、`LC_ALL`、`LC_MESSAGES` 或 `LANG`，最后使用系统区域设置。主语言为 `zh` 时选择中文，为 `ja` 时选择日语，其他值选择英语。`resolve_bundled_launch_args()`、`download_office()`、`download_primary_runtime()` 和 `resolve_office_launch_args()` 接受仅限关键字的 `language="en" | "zh" | "ja"` 和 `env`；显式语言优先。启动解析器使用 `env` 选择区域设置和运行时模式。下载和 Office 辅助函数将 `env` 合并到继承环境中，用于资源查找和子进程，并通过 `DSH_LANG` 传递所选语言。这些选项不修改调用方环境，也不增加 CLI 参数。外部进程诊断和退出状态保留原值。
 
 - `bundled_package_dir() -> Path` 返回已安装模块数据根目录，并校验发布元数据。
 - `bundled_runtime_path() -> Path` 返回当前平台可执行程序，并校验必需伴随文件。
