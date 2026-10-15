@@ -1,6 +1,26 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// Linux libc errno values use Linux's system-error table, including on Windows hosts.
+beforeEach(() => {
+  const errors = new Map([
+    [-2, ['ENOENT', 'no such file or directory']],
+    [-9, ['EBADF', 'bad file descriptor']],
+    [-5, ['EIO', 'i/o error']],
+  ])
+  function linuxError(errno: number, field: number): string {
+    const entry = errors.get(errno)
+    if (entry === undefined) throw new RangeError(`Unexpected Linux errno ${errno}`)
+    return entry[field]!
+  }
+  vi.doMock('node:util', async () => ({
+    ...await vi.importActual<typeof import('node:util')>('node:util'),
+    getSystemErrorName: (errno: number) => linuxError(errno, 0),
+    getSystemErrorMessage: (errno: number) => linuxError(errno, 1),
+  }))
+})
 
 afterEach(() => {
+  vi.doUnmock('node:util')
   vi.doUnmock('@deepseek-ai/dsh-lazy-require')
   vi.resetModules()
 })

@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
 import { AclWriteGrant, tempWriteSid, workspaceWriteSid } from '../src/index.ts'
+import { aclFixtureCommand } from './windows-acl-fixture.ts'
 
 const isWin32 = process.platform === 'win32'
 const runnerEntry = fileURLToPath(new URL('../src/runner.ts', import.meta.url))
@@ -539,6 +540,10 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     mkdirSync(child)
     writeFileSync(join(granted, 'file.txt'), 'x')
     writeFileSync(join(child, 'deep.txt'), 'x')
+    // An explicit FullControl allow would precede and bypass an inherited deny.
+    const reset = spawnSync('pwsh', ['-NoLogo', '-NonInteractive', '-NoProfile', '-Command',
+      aclFixtureCommand(`[DshAclFixture]::SetDacl('${child}', 'D:', $false)`)], { encoding: 'utf8', timeout: 60_000 })
+    expect(reset.status, reset.stderr).toBe(0)
     const grant = AclWriteGrant.create(workspaceWriteSid(granted))
     grant.add(granted, true)
     try {
@@ -558,7 +563,7 @@ TryOpen 'FILE' '${join(granted, 'file.txt')}'
 TryOpen 'NESTED-FILE' '${join(child, 'deep.txt')}'
 TryOpen 'DIRECTORY' '${child}'
 `
-      const result = spawnSync('pwsh', ['-NoLogo', '-NonInteractive', '-NoProfile', '-Command', probe], { encoding: 'utf8', timeout: 60_000 })
+      const result = spawnSync('pwsh', ['-NoLogo', '-NonInteractive', '-NoProfile', '-Command', aclFixtureCommand(probe)], { encoding: 'utf8', timeout: 60_000 })
       expect(result.status, `stderr: ${result.stderr}`).toBe(0)
       expect(result.stdout).toContain('FILE: OK')
       expect(result.stdout).toContain('NESTED-FILE: OK')
