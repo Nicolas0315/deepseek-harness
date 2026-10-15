@@ -1,0 +1,44 @@
+name: Free Intel macOS qualification
+on:
+  push:
+    branches: [codex/qa-intel-20261015]
+permissions:
+  contents: read
+concurrency:
+  group: free-intel-qualification
+  cancel-in-progress: false
+jobs:
+  mac-intel:
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    env:
+      DSH_TELEMETRY_DISABLED: '1'
+      DSH_DESKTOP_BUILD_VERSION: '0.2.1-alpha.3'
+      DSH_GATE_CONCURRENCY: '2'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          ref: 873be5eb5a16c4188b67977fa969bce28e666f39
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.21.0'
+      - name: Confirm standard Intel environment
+        run: |
+          test "$(git rev-parse HEAD)" = 873be5eb5a16c4188b67977fa969bce28e666f39
+          test "$(uname -m)" = x86_64
+          node -p 'JSON.stringify({platform:process.platform,arch:process.arch,version:process.version})'
+          df -h .
+          npm install --global pnpm@11.28.5
+      - name: Install locked source dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build unsigned package and run official native runtime qualification
+        shell: bash
+        run: |
+          pnpm run package:desktop:mac:x64:unsigned 2>&1 | sed -E 's/(token=)[^&[:space:]]+/\1[redacted]/g'
+      - name: Verify disk image
+        run: |
+          hdiutil verify apps/desktop/.desktop-build/targets/mac-x64/unsigned-artifacts/deepseek-harness-0.2.1-alpha.3-mac-x64-unsigned.dmg
+          shasum -a 256 apps/desktop/.desktop-build/targets/mac-x64/unsigned-artifacts/deepseek-harness-0.2.1-alpha.3-mac-x64-unsigned.dmg
+      - name: Verify all declared dependency files remain locked
+        run: git diff --exit-code -- pnpm-lock.yaml package.json pnpm-workspace.yaml ':(glob)**/package.json'
