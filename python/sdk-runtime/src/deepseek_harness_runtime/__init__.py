@@ -27,7 +27,10 @@ import platform
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
+
+from ._messages import Language, message, resolve_language
 from ._resources import validate_downloads, validate_resources, office_launch_args
 
 PACKAGE_METADATA_FILENAME = "deepseek-harness-runtime.json"
@@ -37,25 +40,17 @@ RUNTIME_MODE_ENV_VAR = "DSH_RUNTIME_MODE"
 _PLATFORM_TAGS = {"linux": "linux", "darwin": "macos", "win32": "win"}
 _ARCH_TAGS = {"x86_64": "x64", "amd64": "x64", "arm64": "arm64", "aarch64": "arm64"}
 
-_EXE_ACQUISITION_HINT = (
-    "Two ways to get the executable: run `scripts/build-exe-for-python-sdk.ts` (via tsx) in a "
-    "deepseek-harness checkout, or install the matching `deepseek-harness-runtime-bin` platform "
-    "wheel retained by the `build-exe-for-python-sdk` CI workflow. For local development "
-    "against a repo source build, explicitly select the dev-only node carrier with "
-    f"{RUNTIME_MODE_ENV_VAR}=node (or resolve_bundled_launch_args('node'))."
-)
 
-
-def bundled_package_dir() -> Path:
+def bundled_package_dir(*, language: Language | None = None) -> Path:
     """Root directory of the installed runtime package data (the directory of this module)."""
     root = Path(__file__).resolve().parent
     metadata = root / PACKAGE_METADATA_FILENAME
     if not metadata.is_file():
-        raise FileNotFoundError(f"deepseek-harness-runtime-bin is missing {metadata}")
+        raise FileNotFoundError(message("metadata_missing", language, path=metadata))
     return root
 
 
-def bundled_runtime_path() -> Path:
+def bundled_runtime_path(*, language: Language | None = None) -> Path:
     """Absolute path of the bundled single-file runtime executable for the current platform.
 
     Raises FileNotFoundError when the platform is unsupported, the executable
@@ -66,13 +61,12 @@ def bundled_runtime_path() -> Path:
     this lookup interface, so an on-demand download can replace it without
     touching callers).
     """
-    tag = _current_platform_tag()
+    tag = _current_platform_tag(language=language)
     extension = ".exe" if tag.startswith("win-") else ""
-    path = bundled_package_dir() / "runtime" / f"deepseek-harness-sdk-runtime-{tag}{extension}"
+    path = bundled_package_dir(language=language) / "runtime" / f"deepseek-harness-sdk-runtime-{tag}{extension}"
     if not path.is_file():
         raise FileNotFoundError(
-            f"deepseek-harness-runtime-bin is missing the runtime executable at {path}. "
-            + _EXE_ACQUISITION_HINT
+            message("exe_missing", language, path=path, hint=message("acquisition_hint", language))
         )
     ripgrep = (
         path.with_name(f"{path.stem}-rg.exe")
@@ -81,21 +75,21 @@ def bundled_runtime_path() -> Path:
     )
     if not ripgrep.is_file():
         raise FileNotFoundError(
-            f"deepseek-harness-runtime-bin is missing the ripgrep sidecar at {ripgrep}. "
-            + _EXE_ACQUISITION_HINT
+            message("rg_missing", language, path=ripgrep, hint=message("acquisition_hint", language))
         )
     if tag.startswith("macos-"):
         helper = Path(f"{path}-spawn-helper")
         if not helper.is_file():
             raise FileNotFoundError(
-                f"deepseek-harness-runtime-bin is missing the node-pty spawn helper at {helper}. "
-                + _EXE_ACQUISITION_HINT
+                message("helper_missing", language, path=helper, hint=message("acquisition_hint", language))
             )
-    validate_downloads(path.with_name(tag), tag)
+    validate_downloads(path.with_name(tag), tag, language=language)
     return path
 
 
-def resolve_bundled_launch_args(mode: str | None = None) -> tuple[str, ...]:
+def resolve_bundled_launch_args(
+    mode: str | None = None, *, language: Language | None = None, env: Mapping[str, str] | None = None,
+) -> tuple[str, ...]:
     """The argv tuple that launches the bundled runtime.
 
     Mode selection: the explicit ``mode`` argument wins, then the
@@ -105,20 +99,22 @@ def resolve_bundled_launch_args(mode: str | None = None) -> tuple[str, ...]:
     deployment can never silently ride on a source build. Returns
     ``(exe_path,)`` in exe mode and ``(node_path, bin_js_path)`` in node mode;
     raises FileNotFoundError when the selected carrier is unavailable and
-    ValueError for an unknown mode value.
+    ValueError for an unknown mode value. ``env`` supplies runtime-mode and locale
+    selection; explicit ``language`` wins. Neither changes the process environment.
     """
-    selected = mode if mode is not None else os.environ.get(RUNTIME_MODE_ENV_VAR)
+    if env is not None:
+        language = resolve_language(env, language)
+    selected = mode if mode is not None else (os.environ if env is None else env).get(RUNTIME_MODE_ENV_VAR)
     if selected is None or selected == "exe":
-        return (str(bundled_runtime_path()),)
+        return (str(bundled_runtime_path(language=language)),)
     if selected == "node":
-        return _node_launch_args()
+        return _node_launch_args(language=language)
     raise ValueError(
-        f"unsupported DeepSeek Harness runtime mode {selected!r}: expected 'exe' or 'node' "
-        f"(explicit argument or ${RUNTIME_MODE_ENV_VAR})"
+        message("mode_invalid", language, mode=selected)
     )
 
 
-def _current_platform_tag() -> str:
+def _current_platform_tag(*, language: Language | None = None) -> str:
     plat = _PLATFORM_TAGS.get(sys.platform)
     arch = _ARCH_TAGS.get(platform.machine().lower())
     if (
@@ -127,78 +123,90 @@ def _current_platform_tag() -> str:
         or (plat == "win" and arch != "x64")
     ):
         raise FileNotFoundError(
-            "no bundled DeepSeek Harness SDK runtime exists for this platform "
-            f"(sys.platform={sys.platform!r}, machine={platform.machine()!r}); supported: "
-            "Linux x64/arm64, macOS x64/arm64, and Windows x64. " + _EXE_ACQUISITION_HINT
+            message("platform_unsupported", language, platform=sys.platform, machine=platform.machine(),
+                    hint=message("acquisition_hint", language))
         )
     return f"{plat}-{arch}"
 
 
-def _node_launch_args() -> tuple[str, str]:
-    node_root = bundled_package_dir() / "runtime" / "node"
+def _node_launch_args(*, language: Language | None = None) -> tuple[str, str]:
+    node_root = bundled_package_dir(language=language) / "runtime" / "node"
     bin_js = node_root / "runtime-bootstrap.mjs"
     if not bin_js.is_file():
         raise FileNotFoundError(
-            f"the dev-only node runtime closure is missing at {node_root} "
-            f"(no {bin_js}); run `scripts/build-exe-for-python-sdk.ts` in a deepseek-harness "
-            "checkout, which builds and copies the deploy closure here. The node carrier "
-            "is for repo-local development only — production uses the single-file exe."
+            message("node_missing", language, root=node_root, path=bin_js)
         )
     node = shutil.which("node")
     if node is None:
         raise FileNotFoundError(
-            "the node runtime mode needs a system `node` (>=22.19) on PATH; "
-            "install Node.js or use the exe mode"
+            message("node_required", language)
         )
     return (node, str(bin_js))
 
 
-def _download(resource: str) -> Path:
-    result = subprocess.run(resolve_bundled_launch_args(), capture_output=True, encoding="utf-8",
-                            env={**os.environ, "DSH_RUNTIME_DOWNLOAD": resource})
+def _download(
+    resource: str, *, language: Language | None = None, env: Mapping[str, str] | None = None,
+) -> Path:
+    effective_env = {**os.environ, **(env or {})}
+    language = resolve_language(effective_env, language)
+    effective_env["DSH_LANG"] = language
+    effective_env["DSH_RUNTIME_DOWNLOAD"] = resource
+    result = subprocess.run(resolve_bundled_launch_args(language=language, env=effective_env),
+                            capture_output=True, encoding="utf-8", env=effective_env)
     if result.returncode:
-        raise RuntimeError(result.stderr.strip() or f"resource download failed with exit code {result.returncode}")
+        raise RuntimeError(result.stderr.strip() or message("download_failed", language, code=result.returncode))
     path = json.loads(result.stdout)
     if not isinstance(path, str) or not Path(path).is_absolute():
-        raise ValueError("runtime returned an invalid resource path")
+        raise ValueError(message("resource_path_invalid", language))
     return Path(path)
 
 
-def download_office() -> Path:
+def download_office(*, language: Language | None = None, env: Mapping[str, str] | None = None) -> Path:
     """Download the locked npm Office sidecar and standalone Node into the resource cache.
 
     Return its absolute directory. Reuse completed downloads; failures leave no
     published partial installation. DSH_RESOURCE_CACHE selects the cache root.
     This explicit operation requires network access on a cache miss, not a
     Harness home, agent, or model. Other SDK operations never trigger downloads.
+    language selects diagnostics and child DSH_LANG; env overrides inherited variables.
     """
-    return _download("office")
+    return _download("office", language=language, env=env)
 
 
-def download_primary_runtime() -> Path:
+def download_primary_runtime(*, language: Language | None = None, env: Mapping[str, str] | None = None) -> Path:
     """Download locked CPython, libraries, Node, pnpm and skills into the resource cache.
 
     Return the absolute primary-runtime directory. This is independent of the
     Office engine download and does not copy resources into a Harness home.
     Completed downloads are reused; DSH_RESOURCE_CACHE selects the cache root.
+    language selects diagnostics and child DSH_LANG; env overrides inherited variables.
     """
-    path = _download("primary")
-    validate_resources(path.parent, _current_platform_tag())
+    effective_env = {**os.environ, **(env or {})}
+    language = resolve_language(effective_env, language)
+    path = _download("primary", language=language, env=effective_env)
+    validate_resources(path.parent, _current_platform_tag(language=language), language=language, env=effective_env)
     return path
 
 
-def resolve_office_launch_args() -> tuple[str, str]:
-    """Locate the explicitly downloaded Office CLI and its standalone Node; never download."""
-    tag = _current_platform_tag()
-    return office_launch_args(bundled_runtime_path().with_name(tag), tag)
+def resolve_office_launch_args(
+    *, language: Language | None = None, env: Mapping[str, str] | None = None,
+) -> tuple[str, str]:
+    """Locate the explicitly downloaded Office CLI and its standalone Node; never download.
+
+    language selects diagnostics; env overrides inherited variables for resource lookup.
+    """
+    effective_env = {**os.environ, **(env or {})}
+    language = resolve_language(effective_env, language)
+    tag = _current_platform_tag(language=language)
+    return office_launch_args(bundled_runtime_path(language=language).with_name(tag), tag,
+                              language=language, env=effective_env)
 
 
 def main() -> None:
     """Launch the CLI with explicit DSH_HOME; wait on Windows, replace the process on POSIX."""
     if not os.environ.get("DSH_HOME", "").strip():
         print(
-            "dsh: the Python runtime command requires an explicit DSH_HOME; "
-            "it never uses ~/.dsh implicitly",
+            message("home_required"),
             file=sys.stderr,
         )
         raise SystemExit(2)

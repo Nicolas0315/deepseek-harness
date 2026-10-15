@@ -29,6 +29,8 @@ Run `dsh --profile web` for browser chat, model and settings management, and ses
 <a id="use-this-package"></a>
 ## Use this package
 
+Startup help, flag validation, public-URL validation, exposure warnings, and browser-launch reports use the [command-line diagnostic language](../../boot/cmdline/README.md#parsing-your-flags). Model-facing Web orientation remains independent of this terminal language.
+
 Start the GUI, open your browser, and start talking to the agent. The flags fine-tune the invocation.
 
 ### Starting the Web GUI

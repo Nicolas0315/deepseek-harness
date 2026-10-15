@@ -12,7 +12,7 @@ import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { TrajectoryTable as LocalizedTrajectoryTable } from '../src/client/TrajectoryTable.tsx'
 import { deriveTrajectoryLayout, type TrajectoryTurnModel } from '../src/client/layout.ts'
 import { trajectoryRecordId } from '../src/client/trajectory-record.ts'
-import { t, tZh } from './locale.client.ts'
+import { t, tJa, tZh } from './locale.client.ts'
 
 const loadImage: MessageImageLoader = async () => 'blob:trajectory'
 const renderNoImages: PropsRenderSlots<'conversation.trajectory.images'>['renderSlot'] = () => null
@@ -221,6 +221,53 @@ describe('TrajectoryTable', () => {
     expect(screen.getByText('500 ms')).toBeTruthy()
     expect(screen.getByText('1.00 s')).toBeTruthy()
     expect(screen.getByText('20.0 tok/s')).toBeTruthy()
+  })
+
+  it.each([
+    ['en', t, '10/14/2026, 00:02:03.045', '10/14/2026, 23:02:03.045'],
+    ['ja', tJa, '2026/10/14 00:02:03.045', '2026/10/14 23:02:03.045'],
+    ['zh', tZh, '2026/10/14 00:02:03.045', '2026/10/14 23:02:03.045'],
+  ] as const)('formats local start times in %s with milliseconds and a 24-hour clock', (
+    _locale, translate, midnight, evening,
+  ) => {
+    const timestamp = new Date(2026, 9, 14, 0, 2, 3, 45).getTime()
+    const turns = (startedAt: number): readonly TrajectoryTurnModel[] => [{
+      turn: 1,
+      groups: [{
+        title: 'Step 1',
+        cells: [{
+          index: 1, kind: 'message', text: 'response', timeSeconds: 1,
+          assistantMetrics: {
+            timingRecorded: true, stepStartTime: startedAt,
+            firstTokenTime: startedAt + 100, completedTime: startedAt + 1_000,
+            usageProvided: false, outputTokens: null,
+          },
+        }],
+      }],
+    }]
+    const requestNumbers = [{ turn: 1, step: 1, group: 'Step 1', number: 1 }]
+    const view = render(<LocalizedTrajectoryTable
+      requestNumbers={requestNumbers}
+      turns={turns(timestamp)}
+      t={translate}
+      renderSlot={renderNoImages} loadImage={loadImage}
+      {...FOLD_PROPS}
+    />)
+    fireEvent.click(screen.getByRole('row', { name: /response/ }))
+    const toggle = screen.getByRole('button', { name: midnight })
+    fireEvent.click(toggle)
+    expect(toggle.textContent).toBe((timestamp / 1_000).toFixed(3))
+    fireEvent.click(toggle)
+    expect(toggle.textContent).toBe(midnight)
+
+    view.rerender(<LocalizedTrajectoryTable
+      requestNumbers={requestNumbers}
+      turns={turns(new Date(2026, 9, 14, 23, 2, 3, 45).getTime())}
+      t={translate}
+      renderSlot={renderNoImages} loadImage={loadImage}
+      {...FOLD_PROPS}
+    />)
+    expect(screen.getByRole('button', { name: evening })).toBeTruthy()
   })
 
   it('shows a tool record Duration as exact milliseconds', () => {

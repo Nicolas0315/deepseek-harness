@@ -1,8 +1,175 @@
 diff --git a/dist/index.esm.js b/dist/index.esm.js
-index 5c9820b1a261305d500e69eeaf350821872beaf4..819c6d2e3ffa422b1d1bf163bf56df13bd3af17e 100644
+index 5c9820b1a261305d500e69eeaf350821872beaf4..8800afadcd8bb189b2ad4f38f8f2cfbca8baafe8 100644
 --- a/dist/index.esm.js
 +++ b/dist/index.esm.js
-@@ -62866,7 +62866,7 @@ function rangeValueToHtml(ctx, sheetId, ranges) {
+@@ -52066,15 +52066,164 @@ var zh_tw = {
+     support: "當前瀏覽器不支持WebSocket"
+   }
+ };
+-
++// Japanese covers the read-only preview, search, and accessibility messages.
++// Editing surfaces are not mounted by Harness and retain the upstream vocabulary.
++var ja = Object.assign({}, en, {
++  generalDialog: {
++    "partiallyError": "一部だけ結合されたセルにはこの操作を実行できません",
++    "readOnlyError": "読み取り専用ではこの操作を実行できません",
++    "dataNullError": "存在しないデータにはこの操作を実行できません",
++    "noSeletionError": "まず範囲を選択してください",
++    "cannotSelectMultiple": "複数の範囲は選択できません"
++  },
++  button: {
++    "confirm": "OK",
++    "cancel": "キャンセル",
++    "close": "閉じる",
++    "update": "更新",
++    "delete": "削除",
++    "insert": "挿入",
++    "prevPage": "前へ",
++    "nextPage": "次へ",
++    "total": "合計："
++  },
++  info: {
++    "detailUpdate": "新しく開きました",
++    "detailSave": "ローカルキャッシュを復元しました",
++    "row": "",
++    "column": "",
++    "loading": "読み込み中…",
++    "copy": "コピー",
++    "return": "終了",
++    "rename": "名前を変更",
++    "tips": "ブック名を変更",
++    "noName": "無題の表計算",
++    "wait": "更新を待っています",
++    "add": "追加",
++    "addLast": "末尾に行を追加",
++    "backTop": "先頭に戻る",
++    "pageInfo": "合計 ${total} 件、全 ${totalPage} ページ、現在 ${currentPage} ページ",
++    "nextPage": "次へ",
++    "tipInputNumber": "数値を入力してください",
++    "tipInputNumberLimit": "追加できる数は 1～100 です",
++    "tipRowHeightLimit": "行の高さは 0～545 にしてください",
++    "tipColumnWidthLimit": "列の幅は 0～2038 にしてください",
++    "pageInfoFull": "合計 ${total} 件、全 ${totalPage} ページ、すべてのデータを表示中",
++    "sheetIsFocused": "シートのフォーカスロックを有効にしました。",
++    "sheetNotFocused": "シートのフォーカスロックを無効にしました。",
++    "sheetSrIntro": "シートとツールバーなどの間でフォーカスを切り替えるには Shift、Control、F を押してください。",
++    "currentCellInput": "現在のセルの内容",
++    "newSheet": "新しいシート",
++    "sheetOptions": "シートのオプション",
++    "Dropdown": "ドロップダウン",
++    "zoomIn": "拡大",
++    "zoomOut": "縮小",
++    "toggleSheetFocusShortcut": "シートのフォーカスロックを切り替え：Shift、Control、F。",
++    "selectRangeShortcut": "範囲を選択：Shift、方向キー。",
++    "autoFillDownShortcut": "選択範囲を先頭セルから下へ自動入力：Control または Meta キー、D。",
++    "autoFillRightShortcut": "選択範囲を先頭セルから右へ自動入力：Control または Meta キー、R。",
++    "boldTextShortcut": "太字：Control または Meta キー、B。",
++    "copyShortcut": "コピー：Control または Meta キー、C。",
++    "pasteShortcut": "貼り付け：Control または Meta キー、V。",
++    "undoShortcut": "取り消し：Control または Meta キー、Z。",
++    "redoShortcut": "やり直し：Control または Meta キー、Shift、Z。",
++    "deleteCellContentShortcut": "セルの内容を削除：Delete または Backspace。",
++    "confirmCellEditShortcut": "セルの編集を確定して下へ移動：Enter。",
++    "moveRightShortcut": "右へ移動：Tab。",
++    "moveLeftShortcut": "左へ移動：Shift、Tab。",
++    "shortcuts": "キーボードショートカット",
++    "zoomSettings": "表示倍率の設定"
++  },
++  findAndReplace: {
++    "find": "検索",
++    "replace": "置換",
++    "goto": "移動",
++    "location": "位置",
++    "formula": "数式",
++    "date": "日付",
++    "number": "数値",
++    "string": "文字列",
++    "error": "エラー",
++    "condition": "条件",
++    "rowSpan": "行の範囲",
++    "columnSpan": "列の範囲",
++    "locationExample": "位置",
++    "lessTwoRowTip": "2 行以上を選択してください",
++    "lessTwoColumnTip": "2 列以上を選択してください",
++    "findTextbox": "検索する内容",
++    "replaceTextbox": "置換後の内容",
++    "regexTextbox": "正規表現",
++    "wholeTextbox": "単語全体",
++    "distinguishTextbox": "大文字と小文字を区別",
++    "allReplaceBtn": "すべて置換",
++    "replaceBtn": "置換",
++    "allFindBtn": "すべて検索",
++    "findBtn": "次を検索",
++    "noFindTip": "内容が見つかりませんでした",
++    "modeTip": "このモードではこの操作を利用できません",
++    "searchTargetSheet": "シート",
++    "searchTargetCell": "セル",
++    "searchTargetValue": "値",
++    "searchInputTip": "検索する内容を入力してください",
++    "noReplceTip": "置換する内容がありません",
++    "noMatchTip": "一致する内容がありません",
++    "successTip": "${xlength} 件が見つかりました",
++    "locationConstant": "定数",
++    "locationFormula": "数式",
++    "locationDate": "日付",
++    "locationDigital": "数値",
++    "locationString": "文字列",
++    "locationBool": "論理値",
++    "locationError": "エラー",
++    "locationNull": "空のセル",
++    "locationCondition": "条件付き書式",
++    "locationRowSpan": "行の範囲",
++    "locationColumnSpan": "列の範囲",
++    "locationTiplessTwoRow": "2 行以上を選択してください",
++    "locationTiplessTwoColumn": "2 列以上を選択してください",
++    "locationTipNotFindCell": "セルが見つかりませんでした"
++  },
++  insertLink: {
++    "linkText": "表示するテキスト",
++    "linkType": "リンクの種類",
++    "linkAddress": "リンク先のアドレス",
++    "linkSheet": "ワークシート",
++    "linkCell": "セル範囲",
++    "linkTooltip": "ツールチップ",
++    "selectCellRange": "セル範囲を選択",
++    "cellRangePlaceholder": "カーソルでセルを選択するか、直接入力してください",
++    "placeholder1": "ウェブのリンク先アドレスを入力してください",
++    "placeholder2": "参照するセルを入力してください（例：A1）",
++    "placeholder3": "説明を入力してください",
++    "tooltipInfo1": "有効なリンクを入力してください",
++    "invalidCellRangeTip": "Sheet1!A1:C8 など、有効なセル範囲を入力してください",
++    "openLink": "リンクを開く",
++    "goTo": "${linkAddress} に移動"
++  },
++  comment: {
++    "insert": "挿入",
++    "edit": "編集",
++    "delete": "削除",
++    "showOne": "表示・非表示",
++    "showAll": "すべて表示・非表示"
++  },
++  rightclick: Object.assign({}, en.rightclick, {
++    "copy": "コピー",
++    "noMulti": "複数の選択範囲には実行できません。単一の範囲を選択してください。"
++  })
++});
+ var localeObj = {
+   en: en,
+   zh: zh,
+   es: es,
+   "zh-TW": zh_tw,
+   hi: hi,
+-  ru: ru
++  ru: ru,
++  ja: ja
+ };
++Object.keys(localeObj).forEach(function (language) {
++  localeObj[language].info = Object.assign({ zoomSettings: "Zoom settings" }, localeObj[language].info);
++});
+ function locale(ctx) {
+   var _ctx$lang;
+   var langsToTry = [ctx.lang || "", ((_ctx$lang = ctx.lang) === null || _ctx$lang === void 0 ? void 0 : _ctx$lang.split("-")[0]) || ""];
+@@ -62866,7 +63015,7 @@ function rangeValueToHtml(ctx, sheetId, ranges) {
          if (_.isNil(c_value)) {
            c_value = "";
          }
@@ -11,7 +178,7 @@ index 5c9820b1a261305d500e69eeaf350821872beaf4..819c6d2e3ffa422b1d1bf163bf56df13
        } else {
          var _style = "";
          if (borderInfoCompute && borderInfoCompute["".concat(r, "_").concat(c)]) {
-@@ -73869,6 +73869,7 @@ var Canvas = /*#__PURE__*/function () {
+@@ -73869,6 +74018,7 @@ var Canvas = /*#__PURE__*/function () {
    }, {
      key: "drawFreezeLine",
      value: function drawFreezeLine(_ref2) {
@@ -19,7 +186,7 @@ index 5c9820b1a261305d500e69eeaf350821872beaf4..819c6d2e3ffa422b1d1bf163bf56df13
        var horizontalTop = _ref2.horizontalTop,
          verticalLeft = _ref2.verticalLeft;
        var renderCtx = this.canvasElement.getContext("2d");
-@@ -77244,6 +77245,16 @@ function handleGlobalWheel(ctx, e, cache, scrollbarX, scrollbarY) {
+@@ -77244,6 +77394,16 @@ function handleGlobalWheel(ctx, e, cache, scrollbarX, scrollbarY) {
    var _cache$searchDialog;
    if (((_cache$searchDialog = cache.searchDialog) === null || _cache$searchDialog === void 0 ? void 0 : _cache$searchDialog.mouseEnter) && ctx.showSearch && ctx.showReplace) return;
    if (ctx.filterContextMenu != null) return;
@@ -37,10 +204,177 @@ index 5c9820b1a261305d500e69eeaf350821872beaf4..819c6d2e3ffa422b1d1bf163bf56df13
    var scrollTop = scrollbarY.scrollTop;
    var visibledatacolumn_c = ctx.visibledatacolumn;
 diff --git a/dist/index.js b/dist/index.js
-index 04113a18dee9feee28e9434ee3023626c800e7d3..29e35f51fbf1c3bb16cca54ce2bda81bae4fef64 100644
+index 04113a18dee9feee28e9434ee3023626c800e7d3..a63f2a26d6202cd5a47d0e3fac6b9ef79fbf8f31 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -62876,7 +62876,7 @@ function rangeValueToHtml(ctx, sheetId, ranges) {
+@@ -52076,15 +52076,164 @@ var zh_tw = {
+     support: "當前瀏覽器不支持WebSocket"
+   }
+ };
+-
++// Japanese covers the read-only preview, search, and accessibility messages.
++// Editing surfaces are not mounted by Harness and retain the upstream vocabulary.
++var ja = Object.assign({}, en, {
++  generalDialog: {
++    "partiallyError": "一部だけ結合されたセルにはこの操作を実行できません",
++    "readOnlyError": "読み取り専用ではこの操作を実行できません",
++    "dataNullError": "存在しないデータにはこの操作を実行できません",
++    "noSeletionError": "まず範囲を選択してください",
++    "cannotSelectMultiple": "複数の範囲は選択できません"
++  },
++  button: {
++    "confirm": "OK",
++    "cancel": "キャンセル",
++    "close": "閉じる",
++    "update": "更新",
++    "delete": "削除",
++    "insert": "挿入",
++    "prevPage": "前へ",
++    "nextPage": "次へ",
++    "total": "合計："
++  },
++  info: {
++    "detailUpdate": "新しく開きました",
++    "detailSave": "ローカルキャッシュを復元しました",
++    "row": "",
++    "column": "",
++    "loading": "読み込み中…",
++    "copy": "コピー",
++    "return": "終了",
++    "rename": "名前を変更",
++    "tips": "ブック名を変更",
++    "noName": "無題の表計算",
++    "wait": "更新を待っています",
++    "add": "追加",
++    "addLast": "末尾に行を追加",
++    "backTop": "先頭に戻る",
++    "pageInfo": "合計 ${total} 件、全 ${totalPage} ページ、現在 ${currentPage} ページ",
++    "nextPage": "次へ",
++    "tipInputNumber": "数値を入力してください",
++    "tipInputNumberLimit": "追加できる数は 1～100 です",
++    "tipRowHeightLimit": "行の高さは 0～545 にしてください",
++    "tipColumnWidthLimit": "列の幅は 0～2038 にしてください",
++    "pageInfoFull": "合計 ${total} 件、全 ${totalPage} ページ、すべてのデータを表示中",
++    "sheetIsFocused": "シートのフォーカスロックを有効にしました。",
++    "sheetNotFocused": "シートのフォーカスロックを無効にしました。",
++    "sheetSrIntro": "シートとツールバーなどの間でフォーカスを切り替えるには Shift、Control、F を押してください。",
++    "currentCellInput": "現在のセルの内容",
++    "newSheet": "新しいシート",
++    "sheetOptions": "シートのオプション",
++    "Dropdown": "ドロップダウン",
++    "zoomIn": "拡大",
++    "zoomOut": "縮小",
++    "toggleSheetFocusShortcut": "シートのフォーカスロックを切り替え：Shift、Control、F。",
++    "selectRangeShortcut": "範囲を選択：Shift、方向キー。",
++    "autoFillDownShortcut": "選択範囲を先頭セルから下へ自動入力：Control または Meta キー、D。",
++    "autoFillRightShortcut": "選択範囲を先頭セルから右へ自動入力：Control または Meta キー、R。",
++    "boldTextShortcut": "太字：Control または Meta キー、B。",
++    "copyShortcut": "コピー：Control または Meta キー、C。",
++    "pasteShortcut": "貼り付け：Control または Meta キー、V。",
++    "undoShortcut": "取り消し：Control または Meta キー、Z。",
++    "redoShortcut": "やり直し：Control または Meta キー、Shift、Z。",
++    "deleteCellContentShortcut": "セルの内容を削除：Delete または Backspace。",
++    "confirmCellEditShortcut": "セルの編集を確定して下へ移動：Enter。",
++    "moveRightShortcut": "右へ移動：Tab。",
++    "moveLeftShortcut": "左へ移動：Shift、Tab。",
++    "shortcuts": "キーボードショートカット",
++    "zoomSettings": "表示倍率の設定"
++  },
++  findAndReplace: {
++    "find": "検索",
++    "replace": "置換",
++    "goto": "移動",
++    "location": "位置",
++    "formula": "数式",
++    "date": "日付",
++    "number": "数値",
++    "string": "文字列",
++    "error": "エラー",
++    "condition": "条件",
++    "rowSpan": "行の範囲",
++    "columnSpan": "列の範囲",
++    "locationExample": "位置",
++    "lessTwoRowTip": "2 行以上を選択してください",
++    "lessTwoColumnTip": "2 列以上を選択してください",
++    "findTextbox": "検索する内容",
++    "replaceTextbox": "置換後の内容",
++    "regexTextbox": "正規表現",
++    "wholeTextbox": "単語全体",
++    "distinguishTextbox": "大文字と小文字を区別",
++    "allReplaceBtn": "すべて置換",
++    "replaceBtn": "置換",
++    "allFindBtn": "すべて検索",
++    "findBtn": "次を検索",
++    "noFindTip": "内容が見つかりませんでした",
++    "modeTip": "このモードではこの操作を利用できません",
++    "searchTargetSheet": "シート",
++    "searchTargetCell": "セル",
++    "searchTargetValue": "値",
++    "searchInputTip": "検索する内容を入力してください",
++    "noReplceTip": "置換する内容がありません",
++    "noMatchTip": "一致する内容がありません",
++    "successTip": "${xlength} 件が見つかりました",
++    "locationConstant": "定数",
++    "locationFormula": "数式",
++    "locationDate": "日付",
++    "locationDigital": "数値",
++    "locationString": "文字列",
++    "locationBool": "論理値",
++    "locationError": "エラー",
++    "locationNull": "空のセル",
++    "locationCondition": "条件付き書式",
++    "locationRowSpan": "行の範囲",
++    "locationColumnSpan": "列の範囲",
++    "locationTiplessTwoRow": "2 行以上を選択してください",
++    "locationTiplessTwoColumn": "2 列以上を選択してください",
++    "locationTipNotFindCell": "セルが見つかりませんでした"
++  },
++  insertLink: {
++    "linkText": "表示するテキスト",
++    "linkType": "リンクの種類",
++    "linkAddress": "リンク先のアドレス",
++    "linkSheet": "ワークシート",
++    "linkCell": "セル範囲",
++    "linkTooltip": "ツールチップ",
++    "selectCellRange": "セル範囲を選択",
++    "cellRangePlaceholder": "カーソルでセルを選択するか、直接入力してください",
++    "placeholder1": "ウェブのリンク先アドレスを入力してください",
++    "placeholder2": "参照するセルを入力してください（例：A1）",
++    "placeholder3": "説明を入力してください",
++    "tooltipInfo1": "有効なリンクを入力してください",
++    "invalidCellRangeTip": "Sheet1!A1:C8 など、有効なセル範囲を入力してください",
++    "openLink": "リンクを開く",
++    "goTo": "${linkAddress} に移動"
++  },
++  comment: {
++    "insert": "挿入",
++    "edit": "編集",
++    "delete": "削除",
++    "showOne": "表示・非表示",
++    "showAll": "すべて表示・非表示"
++  },
++  rightclick: Object.assign({}, en.rightclick, {
++    "copy": "コピー",
++    "noMulti": "複数の選択範囲には実行できません。単一の範囲を選択してください。"
++  })
++});
+ var localeObj = {
+   en: en,
+   zh: zh,
+   es: es,
+   "zh-TW": zh_tw,
+   hi: hi,
+-  ru: ru
++  ru: ru,
++  ja: ja
+ };
++Object.keys(localeObj).forEach(function (language) {
++  localeObj[language].info = Object.assign({ zoomSettings: "Zoom settings" }, localeObj[language].info);
++});
+ function locale(ctx) {
+   var _ctx$lang;
+   var langsToTry = [ctx.lang || "", ((_ctx$lang = ctx.lang) === null || _ctx$lang === void 0 ? void 0 : _ctx$lang.split("-")[0]) || ""];
+@@ -62876,7 +63025,7 @@ function rangeValueToHtml(ctx, sheetId, ranges) {
          if (___default['default'].isNil(c_value)) {
            c_value = "";
          }
@@ -49,7 +383,7 @@ index 04113a18dee9feee28e9434ee3023626c800e7d3..29e35f51fbf1c3bb16cca54ce2bda81b
        } else {
          var _style = "";
          if (borderInfoCompute && borderInfoCompute["".concat(r, "_").concat(c)]) {
-@@ -73879,6 +73879,7 @@ var Canvas = /*#__PURE__*/function () {
+@@ -73879,6 +74028,7 @@ var Canvas = /*#__PURE__*/function () {
    }, {
      key: "drawFreezeLine",
      value: function drawFreezeLine(_ref2) {
@@ -57,7 +391,7 @@ index 04113a18dee9feee28e9434ee3023626c800e7d3..29e35f51fbf1c3bb16cca54ce2bda81b
        var horizontalTop = _ref2.horizontalTop,
          verticalLeft = _ref2.verticalLeft;
        var renderCtx = this.canvasElement.getContext("2d");
-@@ -77254,6 +77255,16 @@ function handleGlobalWheel(ctx, e, cache, scrollbarX, scrollbarY) {
+@@ -77254,6 +77404,16 @@ function handleGlobalWheel(ctx, e, cache, scrollbarX, scrollbarY) {
    var _cache$searchDialog;
    if (((_cache$searchDialog = cache.searchDialog) === null || _cache$searchDialog === void 0 ? void 0 : _cache$searchDialog.mouseEnter) && ctx.showSearch && ctx.showReplace) return;
    if (ctx.filterContextMenu != null) return;
@@ -74,3 +408,15 @@ index 04113a18dee9feee28e9434ee3023626c800e7d3..29e35f51fbf1c3bb16cca54ce2bda81b
    var scrollLeft = scrollbarX.scrollLeft;
    var scrollTop = scrollbarY.scrollTop;
    var visibledatacolumn_c = ctx.visibledatacolumn;
+diff --git a/dist/locale/index.d.ts b/dist/locale/index.d.ts
+index 0722b2ae8005b484d96136017fe51dfc8d8114b1..b5cc0c86adb1945d63c8a416b3bf3ea11b111b92 100644
+--- a/dist/locale/index.d.ts
++++ b/dist/locale/index.d.ts
+@@ -202,6 +202,7 @@ declare function locale(ctx: Context): {
+         sheetOptions: string;
+         Dropdown: string;
+         zoomIn: string;
++        zoomSettings: string;
+         zoomOut: string;
+         toggleSheetFocusShortcut: string;
+         selectRangeShortcut: string;

@@ -7,7 +7,8 @@ import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { getEnvironmentData } from 'node:worker_threads'
 import { Context } from '@deepseek-ai/cordis'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createLaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
 import { PluginPackages } from '../src/profile-resolution/service.ts'
 import { createRuntimeResolution, initProfile, loadProfileDirectory, type RuntimeResolution } from '../src/profile.ts'
 
@@ -15,6 +16,7 @@ const roots: string[] = []
 const contexts: Context[] = []
 
 afterEach(async () => {
+  vi.unstubAllEnvs()
   for (const context of contexts.splice(0).reverse()) await context.fiber.dispose()
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
@@ -229,7 +231,8 @@ describe('profile package metadata service', () => {
     )).toBeUndefined()
   })
 
-  it('removes and restores linked roots while rejecting changes to their historical targets', async () => {
+  it('removes and restores linked roots while adopting a new target after removal', async () => {
+    vi.stubEnv('DSH_LANG', 'en')
     const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-linked-package-service-')))
     roots.push(root)
     const profilesDir = join(root, 'profiles')
@@ -269,32 +272,32 @@ describe('profile package metadata service', () => {
       expect(require.resolve('metadata-lib')).toBe(realpathSync.native(join(dir, 'index.cjs')))
     }
     expectSelectedPackage(runtime, '1.0.0')
-    expect(getEnvironmentData(key)).toEqual({ resolution: initial })
+    expect(getEnvironmentData(key)).toEqual({ resolution: initial, locale: 'en' })
 
     ctx.pluginPackages.replace(removed)
     expectSelectedPackage(local, '2.0.0')
-    expect(getEnvironmentData(key)).toEqual({ resolution: removed })
+    expect(getEnvironmentData(key)).toEqual({ resolution: removed, locale: 'en' })
 
     ctx.pluginPackages.replace(initial)
     expectSelectedPackage(runtime, '1.0.0')
-    expect(getEnvironmentData(key)).toEqual({ resolution: initial })
+    expect(getEnvironmentData(key)).toEqual({ resolution: initial, locale: 'en' })
 
     ctx.pluginPackages.replace(removed)
     expectSelectedPackage(local, '2.0.0')
     const removedWorkerData = getEnvironmentData(key)
-    expect(removedWorkerData).toEqual({ resolution: removed })
-    expect(removedWorkerData).toEqual({ resolution: removed })
+    expect(removedWorkerData).toEqual({ resolution: removed, locale: 'en' })
     // A link name may point to another directory once the plugins of its previous target stopped.
     ctx.pluginPackages.replace(relinked)
     expectSelectedPackage(local, '2.0.0')
-    expect(getEnvironmentData(key)).toEqual({ resolution: relinked })
+    expect(getEnvironmentData(key)).toEqual({ resolution: relinked, locale: 'en' })
 
     await ctx.fiber.dispose()
     contexts.pop()
     expect(getEnvironmentData(key)).toBe(previous)
   })
 
-  it('publishes additive generations to the process and future Workers', async () => {
+  it('publishes additive generations and captured language to the process and future Workers', async () => {
+    vi.stubEnv('DSH_LANG', 'en')
     const root = mkdtempSync(join(tmpdir(), 'dsh-package-service-resolution-'))
     roots.push(root)
     const profilesDir = join(root, 'profiles')
@@ -306,11 +309,12 @@ describe('profile package metadata service', () => {
     const previous = getEnvironmentData(key)
     const ctx = new Context()
     contexts.push(ctx)
+    ctx.provide('launchEnvironment', createLaunchEnvironmentSnapshot([{ source: 'process', values: { DSH_LANG: 'ja' } }]))
     await ctx.plugin(PluginPackages, { resolution: initial })
     const initialWorkerData = getEnvironmentData(key) as {
       resolution: RuntimeResolution
     }
-    expect(initialWorkerData).toEqual({ resolution: initial })
+    expect(initialWorkerData).toEqual({ resolution: initial, locale: 'ja' })
 
     const added = join(root, 'added')
     const addedAnchor = pkg(added, '2.0.0', 'added-metadata')
@@ -323,7 +327,7 @@ describe('profile package metadata service', () => {
     }
     ctx.pluginPackages.replace(next)
     expect(getEnvironmentData(key)).toEqual({
-      resolution: next,
+      resolution: next, locale: 'ja',
     })
     expect(ctx.pluginPackages.packageOf(
       'added-metadata', pathToFileURL(join(profileDir, 'entry.mjs')).href,
@@ -333,4 +337,57 @@ describe('profile package metadata service', () => {
     contexts.pop()
     expect(getEnvironmentData(key)).toBe(previous)
   })
+})
+
+it.each(['locale', 'icon'])('captures Japanese for nested service %s metadata and service failures', async (kind) => {
+  vi.stubEnv('DSH_LANG', 'en')
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-japanese-service-meta-')))
+  roots.push(root)
+  const packageDir = join(root, 'node_modules', 'localized')
+  const filename = join(packageDir, 'package.json')
+  file(filename, JSON.stringify({ name: 'localized', exports: {
+    './package.json': './package.json', './locale/*.json': './locale/*.json',
+  }, ...kind === 'icon' ? { icon: '/outside.svg' } : {} }))
+  file(join(packageDir, 'locale', 'en.json'), '{"meta":{"title":"English title"}}')
+  file(join(packageDir, 'locale', 'ja.json'), kind === 'locale' ? '{"meta":null}' : '{"meta":{"title":"日本語タイトル"}}')
+  const ctx = new Context()
+  contexts.push(ctx)
+  ctx.provide('launchEnvironment', createLaunchEnvironmentSnapshot([{ source: 'process', values: { DSH_LANG: 'ja' } }]))
+  await ctx.plugin(PluginPackages)
+  const meta = ctx.pluginPackages.metaOf('localized', pathToFileURL(join(root, 'entry.mjs')).href)
+  const detail = kind === 'locale'
+    ? `${join(packageDir, 'locale', 'ja.json')}: meta はオブジェクトにしてください`
+    : `${filename}: icon は相対ファイルパスにしてください`
+  expect(meta?.error).toBe(`localized のプラグインメタデータ: Error: ${detail}`)
+  if (kind === 'icon') expect(meta?.title).toEqual({ en: 'English title', ja: '日本語タイトル' })
+  await expect(ctx.pluginPackages.refresh()).rejects.toThrow('plugin-packages: 設定済みの実行環境のモジュール解決は再計算できません')
+  expect(() => {
+    ctx.pluginPackages.replace({ profilesDir: root, profileDir: undefined, localPackageNames: [], linkedRoots: [], entries: [] })
+  })
+    .toThrow('plugin-packages: 実行環境のモジュール解決が設定されていません')
+})
+
+
+it('keeps the launch language while replacing and recomputing package resolution', async () => {
+  vi.stubEnv('DSH_LANG', 'en')
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-resolution-language-')))
+  roots.push(root)
+  const installAnchor = join(root, 'install', 'package.json')
+  file(installAnchor, JSON.stringify({ name: 'installation', version: '1.0.0' }))
+  const profileDir = join(root, 'profiles', 'test')
+  initProfile(profileDir, [])
+  const initial = await createRuntimeResolution({
+    installAnchor, home: root, profile: loadProfileDirectory('dsh', profileDir, installAnchor),
+  })
+  const ctx = new Context()
+  contexts.push(ctx)
+  ctx.provide('launchEnvironment', createLaunchEnvironmentSnapshot([{ source: 'process', values: { DSH_LANG: 'ja' } }]))
+  await ctx.plugin(PluginPackages, { resolution: initial })
+  expect(() => { ctx.pluginPackages.replace({
+    profilesDir: join(root, 'other'), profileDir: initial.profileDir, localPackageNames: initial.localPackageNames,
+    entries: initial.entries, linkedRoots: initial.linkedRoots,
+  }) })
+    .toThrow('プロファイル')
+  file(join(profileDir, 'package.json'), 'null')
+  await expect(ctx.pluginPackages.refresh()).rejects.toThrow('JSON オブジェクト')
 })

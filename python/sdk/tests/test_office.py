@@ -19,7 +19,7 @@ def office_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     receipt = tmp_path / "arguments.json"
     script = Path(__file__).parent / "fixtures" / "office_cli.py"
     monkeypatch.setattr(deepseek_harness_runtime, "resolve_office_launch_args",
-                        lambda: (sys.executable, str(script), str(receipt)))
+                        lambda **_kwargs: (sys.executable, str(script), str(receipt)))
     return receipt
 
 
@@ -67,6 +67,7 @@ def test_limits_and_fonts_reach_the_cli(office_cli: Path, tmp_path: Path) -> Non
         max_font_file_bytes=8192, max_loaded_font_bytes=16384,
         font_directories=[tmp_path / "Fonts One", tmp_path / "Fonts Two"],
         initial_font_families=["Fixture Sans", "中文字体"], font_fallbacks=[["Preferred", "Fallback"]],
+        language="ja", env={"DSH_LANG": "en"},
     ))
     assert json.loads(office_cli.read_text())[5:] == [
         "--timeout-ms", "4567", "--max-input-bytes", "1024", "--max-output-bytes", "2048",
@@ -78,17 +79,18 @@ def test_limits_and_fonts_reach_the_cli(office_cli: Path, tmp_path: Path) -> Non
     ]
 
 
+@pytest.mark.parametrize("language", ["en", "ja"])
 @pytest.mark.parametrize(("filename", "code", "exit_code", "message"), [
     ("error.docx", "invalid-document", 1, "Document cannot be loaded"),
     ("crash.docx", "failed", 7, "engine process unavailable"),
     ("timeout.docx", "timeout", 1, "Conversion timed out"),
 ])
 def test_cli_failures_preserve_diagnostics_after_exit(
-    office_cli: Path, tmp_path: Path, filename: str, code: str, exit_code: int, message: str,
+    office_cli: Path, tmp_path: Path, filename: str, code: str, exit_code: int, message: str, language: str,
 ) -> None:
     output = tmp_path / "result.pdf"
     with pytest.raises(OfficeError, match=message) as failure:
-        convert(filename, output, options=OfficeOptions(timeout_ms=100))
+        convert(filename, output, options=OfficeOptions(timeout_ms=100, language=language))
     assert failure.value.code == code
     assert failure.value.exit_code == exit_code
     assert not output.exists()

@@ -1,0 +1,17 @@
+- text: {{cwd}}/日本語の作業場所
+- button "再読み込み"
+- list:
+  - listitem:
+    - button "ガイド.txt"
+  - listitem:
+    - button "亜.txt"
+  - listitem:
+    - button "愛.txt"
+  - listitem:
+    - button "安.txt"
+  - listitem:
+    - button "一.txt"
+  - listitem:
+    - button "資料2.txt"
+  - listitem:
+    - button "資料10.txt"

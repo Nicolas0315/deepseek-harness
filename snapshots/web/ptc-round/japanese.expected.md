@@ -1,0 +1,33 @@
+- banner:
+  - navigation "セッションの階層": "Using ONE run_code program: run"
+  - text: PTC モード
+  - button "その他の操作"
+  - button "右サイドバーを開く"
+  - tablist:
+    - tab "チャット" [selected]
+    - tab "実行履歴"
+- text: "Using ONE run_code program: run bash `echo CODE_ROUND_OK`, then read the file missing.txt catching its error in the program. Return an object with both outcomes. Then reply DONE and stop. {{clock}}"
+- button "コピー"
+- status: 完了
+- button "完了・所要時間 {{duration}}" [expanded]
+- button "コードを実行済み・コマンドを実行済み・ファイルを読み取り済み" [expanded]
+- 'button "思考 The user wants me to write a single `run_code` program that:"'
+- button "コード実行 Run bash echo and catch missing file read"
+- button "Bash を実行 Echo CODE_ROUND_OK"
+- text: 失敗
+- 'button "読み取り Error: cannot read \"{{cwd}}/workspace/missing.txt\": not found"'
+- button "思考 The program ran successfully. Let me now reply DONE as instructed."
+- paragraph: DONE
+- button "コピー"
+- button "よい回答"
+- button "問題のある回答"
+- button "新しい会話に分岐"
+- text: {{clock}}
+- textbox "メッセージやタスクを入力、/ でコマンド、@ でファイルやセッションを参照"
+- button "ファイルを追加またはコマンドを実行"
+- 'button "アクセスモード（現在: ワークスペースへの書き込み）"': ワークスペースへの書き込み
+- button "モデルを選択、現在は DeepSeek-V4-Flash": DeepSeek-V4-Flash
+- button "メッセージを送信" [disabled]
+- button "1 ターン 2 ステップ · {{throughput}} トークン/秒": 1 ターン 2 ステップ{{throughput}} トークン/秒
+- button "17.5K トークン · キャッシュヒット 52%": 17.5K トークンキャッシュヒット 52%
+- button "コンテキスト使用率 7%": 7%

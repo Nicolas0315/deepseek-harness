@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DeepSeekへの会話ログ送信",
+    "description": "有効にすると、公式モデルのAPIリクエストに会話ログを添付してDeepSeekへ送信します。"
+  }
+}

@@ -61,6 +61,7 @@ import { DesktopUpdateOverlays } from './update-overlay.ts'
 import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
+import { localizeNativeMenu } from './native-menu-locale.ts'
 
 let focusPrimaryWindow = (): void => {}
 let stopForRecovery = async (): Promise<void> => {}
@@ -981,10 +982,12 @@ async function main(): Promise<void> {
     { role: 'toggleDevTools', visible: false, accelerator: 'F12' },
   ]
   const refreshApplicationMenu = (): void => {
-    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32' ? devToolsItems : [{
+    const applicationMenu = Menu.buildFromTemplate(process.platform === 'win32' ? devToolsItems : [{
       label: darwin ? app.name : currentDesktopLocale().messages.application,
       submenu: [...applicationItems(), ...devToolsItems],
-    }, ...platformMenus()]))
+    }, ...platformMenus()])
+    localizeNativeMenu(applicationMenu, currentDesktopLocale().id)
+    Menu.setApplicationMenu(applicationMenu)
     tray?.relabel()
   }
   refreshApplicationMenu()

@@ -42,6 +42,8 @@ Both carriers execute the same `dsh` grammar and shipped profiles, including the
 
 ## Python module API
 
+Owned Python diagnostics select the first nonblank `DSH_LANG`, `LC_ALL`, `LC_MESSAGES`, or `LANG`, then the system locale. A `zh` primary locale selects Chinese, a `ja` primary locale selects Japanese, and other values select English. `resolve_bundled_launch_args()`, `download_office()`, `download_primary_runtime()`, and `resolve_office_launch_args()` accept keyword-only `language="en" | "zh" | "ja"` and `env`; explicit language wins. The launch resolver uses `env` for locale and runtime-mode selection. Download and Office helpers merge `env` over inherited variables for resource lookup and child processes, forwarding the selected language through `DSH_LANG`. These options do not change the caller's environment or add CLI arguments. External process diagnostics and exit statuses remain unchanged.
+
 - `bundled_package_dir() -> Path` returns the installed module-data root and verifies its release metadata.
 - `bundled_runtime_path() -> Path` returns the current platform executable and verifies required sidecars.
 - `resolve_bundled_launch_args(mode=None) -> tuple[str, ...]` returns the executable argv by default. Explicit `mode="node"` or `DSH_RUNTIME_MODE=node` selects the repo-only Node carrier.

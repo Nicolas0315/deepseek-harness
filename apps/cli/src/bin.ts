@@ -6,6 +6,8 @@
 
 /* v8 ignore file -- built-bin acceptance exercises this self-executing dispatch. */
 
+import { diagnosticMessages } from './diagnostics.ts'
+import { resolveCommandLocale } from '@deepseek-ai/dsh-cmdline'
 import { getDshRuntimeVersion, loadLayeredEnv, StartupError } from '@deepseek-ai/dsh-app-boot'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { parseDshArgs } from './args.ts'
@@ -24,9 +26,11 @@ export type RunCliOptions = Pick<RunProfileOptions, 'packageManager'> & {
  * @returns a promise that settles when the selected command mode finishes.
  */
 export async function runCli(options: RunCliOptions = {}): Promise<void> {
+  const locale = resolveCommandLocale()
+  const messages = diagnosticMessages(locale)
   const version = getDshRuntimeVersion()
   const { manageDesktopProfile, ...profileOptions } = options
-  const invocation = parseDshArgs(process.argv.slice(2), version, manageDesktopProfile)
+  const invocation = parseDshArgs(process.argv.slice(2), version, manageDesktopProfile, locale)
 
   switch (invocation.mode) {
     case 'profile': {
@@ -42,7 +46,7 @@ export async function runCli(options: RunCliOptions = {}): Promise<void> {
         })
       } catch (error) {
         if (!(error instanceof StartupError)) throw error
-        await reportStartupFailure(error, { home: resolveDshHome(), version, profile: invocation.profile })
+        await reportStartupFailure(error, { home: resolveDshHome(), version, profile: invocation.profile, locale })
         process.exit(1)
       }
       break
@@ -69,7 +73,7 @@ export async function runCli(options: RunCliOptions = {}): Promise<void> {
     }
     default:
       invocation satisfies never
-      throw new Error(`dsh: unhandled invocation mode ${JSON.stringify(invocation)}`)
+      throw new Error(messages.dshUnhandledInvocationMode(JSON.stringify(invocation)))
   }
 }
 

@@ -2,6 +2,7 @@
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  'time.locale': 'zh-CN',
   'error.incomplete': '请先完成这道问题。',
   'error.unanswered': '请选择一个选项或填写自定义答案。',
   'error.unavailable': '当前无法提交，请稍候再试。',
@@ -40,6 +41,7 @@ export type QuestionKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
+  'time.locale': 'en',
   'error.incomplete': 'Please complete this question first.',
   'error.unanswered': 'Please select an option or enter a custom answer.',
   'error.unavailable': 'Cannot submit right now; try again in a moment.',
@@ -72,3 +74,40 @@ export const en = {
   'plan.decline': 'Refuse',
   'plan.discuss': 'Request changes',
 } satisfies Record<QuestionKey, string>
+
+
+/** Japanese dictionary, checked against the complete source key set. */
+export const ja: Record<keyof typeof en, string> = {
+  'time.locale': 'ja-JP',
+  'error.incomplete': 'まずこの質問に回答してください。',
+  'error.unanswered': '選択肢を選ぶか、自由回答を入力してください。',
+  'error.unavailable': '現在送信できません。少し待って再試行してください。',
+  'error.resubmit': '作業再開前に回答が届きませんでした。再送信してください。',
+  'status.sent': '回答を送信しましたが、パネルを閉じられませんでした。',
+  'wait.takeTime': 'ゆっくり回答する',
+  'wait.countdown': '{seconds}秒後に作業を再開',
+  'wait.paused': '一時停止中 · 残り{seconds}秒',
+  'wait.held': '回答するまで待機します',
+  'wait.continued': '作業を再開しました。引き続き回答できます',
+  'review.status': '回答済み',
+  'review.skipped': 'この質問はスキップされました。',
+  'reply.label': '以前の未回答の質問に回答する',
+  'reply.open': '質問の詳細を開く',
+  'reply.close': '質問の詳細を閉じる',
+  'reply.answerLabel': '回答：',
+  'reply.skipped': 'スキップ済み',
+  'nav.prev': '前の質問',
+  'nav.next': '次の質問',
+  'nav.minimize': '質問カードを折りたたむ',
+  'nav.maximize': '質問カードを展開',
+  'nav.cancel': 'すべての質問を閉じる',
+  'nav.close': 'パネルを閉じる。ツール呼び出しから再度開けます',
+  'option.recommended': '推奨',
+  'custom.placeholder': '回答を入力',
+  'action.skip': 'スキップ',
+  'action.next': '次へ',
+  'plan.header': '計画の確認',
+  'plan.approve': '承認',
+  'plan.decline': '拒否',
+  'plan.discuss': '修正を依頼',
+}

@@ -57,7 +57,7 @@ console.log(result.finalResponse)
 
 拥有完整任务的消费者可以先订阅，再调用 `prompt()`，随后调用 `request('session/wait', { sessionId })`，并通过 `tryNext()` 取完已排队的通知。这会等待受管理后代及其触发的根 Agent 摘要轮次；`HarnessSession.run()` 仍以首次空闲作为活动区间终点。`validatedSessionEvent()` 在事件进入输出折叠前，校验事件封装及 SDK 读取方使用的 assistant／turn 字段。
 
-本客户端为每种失败模式导出类型化错误：`JsonRpcResponseError`（协议错误响应，保留 code 与 data）、`RequestTimeoutError`（配置的时限已到）、`SdkProtocolError`（响应超出文档化协议）、`TransportClosedError`（运行时已消失——消息携带退出码与有界 stderr 尾部）。`close()` 先请求协议 `shutdown`（受 `shutdownTimeoutMs` 约束，默认 1000 毫秒），然后走 stdin-EOF → SIGTERM → SIGKILL 阶梯直到进程退出；幂等，已关闭的客户端拒绝复用。`HarnessClientOptions.env` 给定时整体替换子进程环境（`undefined` 原样继承父进程环境）；凭据策略归调用方——`dsh-subprocess` 的 `scrubbedParentEnv` 是面向隔离启动的共享擦除基底。
+本客户端为每种失败模式导出类型化错误：`JsonRpcResponseError`（协议错误响应，保留 code 与 data）、`RequestTimeoutError`（配置的时限已到）、`SdkProtocolError`（响应超出文档化协议）、`TransportClosedError`（运行时已消失——消息携带退出码与有界 stderr 尾部）。`close()` 先请求协议 `shutdown`（受 `shutdownTimeoutMs` 约束，默认 1000 毫秒），然后走 stdin-EOF → SIGTERM → SIGKILL 阶梯直到进程退出；幂等，已关闭的客户端拒绝复用。`HarnessClientOptions.env` 给定时整体替换子进程环境（`undefined` 继承父进程环境），并为该子进程设置所选的 `DSH_LANG`；凭据策略归调用方——`dsh-subprocess` 的 `scrubbedParentEnv` 是面向隔离启动的共享擦除基底。
 
 -----
 
@@ -88,6 +88,8 @@ console.log(result.finalResponse)
 一次运行会订阅会话树、把提示词排入队列，等待提示词的消息 id 出现在持久的 `agent/inbox/spliced` 回执中，然后持续收集通知，直到整个 agent 报告 `idle`。`finalResponse` 从收集到的事件中最后一条 `assistant/message` 派生。传输丢失、超时与协议违例会使本次运行被拒绝；模型结果仍可在事件流中观察，但不会归属于某一输入。
 
 ### 错误与关闭
+
+`language: 'en' | 'zh' | 'ja'` 为每个 SDK 实例选择诊断语言。省略时，客户端依次读取并固定 `DSH_LANG`、`LC_ALL`、`LC_MESSAGES`、`LANG`、系统区域设置；主语言为 `zh` 时使用中文，为 `ja` 时使用日语，其余使用英语。子进程通过自己的 `DSH_LANG` 接收所选语言，父进程状态不变。只翻译 SDK 自有的固定消息；错误类、协议名称、JSON 载荷、stderr、模型文本及远端、提供方、进程错误均保持原样。
 
 每种失败模式都映射到一个导出的错误类——协议错误响应、请求时限已到、响应超出文档化协议、运行时死亡——调用方可以按失败类型分支处理；这四个类从 [src/index.ts](src/index.ts) 导出。关闭采用私有的幂等阶梯（stdin EOF → SIGTERM → SIGKILL），位于 [src/dispose.ts](src/dispose.ts)，只在进程真正退出时结束。
 

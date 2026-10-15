@@ -28,6 +28,18 @@ function names(root: HTMLElement): string[] {
 }
 
 describe('FilesBody', () => {
+  it('orders Japanese filenames by the selected UI language and preserves original path spellings', async () => {
+    const { view, script } = mountBody(ROOT, undefined, 'ja')
+    await act(() => script.watches.ready(ROOT))
+    const entries = ['一.txt', '安.txt', '愛.txt', '亜.txt', '日本語10.txt', '日本語2.txt', 'が.txt', 'か\u3099.txt']
+      .map(name => ({ name, type: 'file' as const }))
+    await act(() => script.settle({ ok: true, value: { entries, truncated: false } }))
+    expect(names(view.container)).toEqual([
+      'が.txt', 'か\u3099.txt', '亜.txt', '愛.txt', '安.txt', '一.txt', '日本語2.txt', '日本語10.txt',
+    ].map(name => `${ROOT}/${name}`))
+    expect(entries[0]?.name).toBe('一.txt')
+  })
+
   it('displays the effective file-tree refresh accelerator', async () => {
     const { view, script } = mountBody(ROOT, { id: 'page.refresh' as never, label: 'Refresh', aliases: [],
       binding: null, keys: ['Ctrl', 'R'], aria: 'Control+R', modified: true, conflicts: [], issue: null })
@@ -292,6 +304,7 @@ describe('FilesBody', () => {
 })
 
 describe('orderEntries', () => {
+  const byName = new Intl.Collator('en-US', { numeric: true, sensitivity: 'base' })
   it('puts directories first and orders each group by name, numbers included', () => {
     const ordered = orderEntries([
       { name: 'file10.txt', type: 'file' },
@@ -300,13 +313,13 @@ describe('orderEntries', () => {
       { name: '.env', type: 'file' },
       { name: 'Alpha', type: 'directory' },
       { name: 'sock', type: 'other' },
-    ])
+    ], byName)
     expect(ordered.map(entry => entry.name)).toEqual(['Alpha', 'zeta', '.env', 'file2.txt', 'file10.txt', 'sock'])
   })
 
   it('leaves the endpoint\'s array untouched', () => {
     const entries = [{ name: 'b', type: 'file' as const }, { name: 'a', type: 'file' as const }]
-    orderEntries(entries)
+    orderEntries(entries, byName)
     expect(entries.map(entry => entry.name)).toEqual(['b', 'a'])
   })
 })

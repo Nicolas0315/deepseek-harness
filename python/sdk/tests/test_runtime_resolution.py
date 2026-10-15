@@ -68,9 +68,10 @@ def test_unknown_explicit_mode_fails_loud() -> None:
         resolve_bundled_launch_args("bogus")
 
 
+@pytest.mark.parametrize("language", ["en", "ja"])
 @pytest.mark.parametrize("target", ["linux-x64", "linux-arm64", "macos-arm64", "macos-x64", "win-x64"])
 @pytest.mark.parametrize("invalid", [None, "manifest", "platform", "python", "skills", "packages", "mode", "node", "node-mode"])
-def test_authoring_resources_validate_installed_and_wheel_payloads(tmp_path: Path, target: str, invalid: str | None) -> None:
+def test_authoring_resources_validate_installed_and_wheel_payloads(tmp_path: Path, target: str, invalid: str | None, language: str) -> None:
     executable = tmp_path / f"deepseek-harness-sdk-runtime-{target}"
     _resource_sidecars(executable)
     root = tmp_path / target
@@ -104,10 +105,10 @@ def test_authoring_resources_validate_installed_and_wheel_payloads(tmp_path: Pat
     with zipfile.ZipFile(archive_path) as archive:
         for candidate in (root, zipfile.Path(archive)):
             if invalid is None:
-                validate_resources(candidate, target)
+                validate_resources(candidate, target, language=language)
             else:
                 with pytest.raises((ValueError, FileNotFoundError)):
-                    validate_resources(candidate, target)
+                    validate_resources(candidate, target, language=language)
 
 
 def test_unknown_env_mode_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -137,12 +138,12 @@ def test_runtime_requires_spawn_helper_only_on_macos(
     macos = runtime_dir / "deepseek-harness-sdk-runtime-macos-arm64"
     macos.touch()
     Path(f"{macos}-rg").touch()
-    monkeypatch.setattr(runtime, "bundled_package_dir", lambda: tmp_path)
+    monkeypatch.setattr(runtime, "bundled_package_dir", lambda **_kwargs: tmp_path)
 
-    monkeypatch.setattr(runtime, "_current_platform_tag", lambda: "macos-arm64")
+    monkeypatch.setattr(runtime, "_current_platform_tag", lambda **_kwargs: "macos-arm64")
     with pytest.raises(FileNotFoundError, match="node-pty spawn helper"):
         runtime.bundled_runtime_path()
-    monkeypatch.setattr(runtime, "_current_platform_tag", lambda: "linux-x64")
+    monkeypatch.setattr(runtime, "_current_platform_tag", lambda **_kwargs: "linux-x64")
     assert runtime.bundled_runtime_path() == linux
 
 
@@ -155,8 +156,8 @@ def test_windows_runtime_uses_exe_payload_and_exe_sidecar(
     executable.touch()
     (runtime_dir / "deepseek-harness-sdk-runtime-win-x64-rg.exe").touch()
     _resource_sidecars(executable)
-    monkeypatch.setattr(runtime, "bundled_package_dir", lambda: tmp_path)
-    monkeypatch.setattr(runtime, "_current_platform_tag", lambda: "win-x64")
+    monkeypatch.setattr(runtime, "bundled_package_dir", lambda **_kwargs: tmp_path)
+    monkeypatch.setattr(runtime, "_current_platform_tag", lambda **_kwargs: "win-x64")
 
     assert runtime.bundled_runtime_path() == executable
 
@@ -184,8 +185,8 @@ def test_runtime_requires_ripgrep_sidecar(
     runtime_dir = tmp_path / "runtime"
     runtime_dir.mkdir()
     (runtime_dir / "deepseek-harness-sdk-runtime-linux-x64").touch()
-    monkeypatch.setattr(runtime, "bundled_package_dir", lambda: tmp_path)
-    monkeypatch.setattr(runtime, "_current_platform_tag", lambda: "linux-x64")
+    monkeypatch.setattr(runtime, "bundled_package_dir", lambda **_kwargs: tmp_path)
+    monkeypatch.setattr(runtime, "_current_platform_tag", lambda **_kwargs: "linux-x64")
 
     with pytest.raises(FileNotFoundError, match="ripgrep sidecar"):
         runtime.bundled_runtime_path()
@@ -198,8 +199,8 @@ def test_runtime_requires_complete_resource_sidecars(
     executable.parent.mkdir()
     executable.touch()
     Path(f"{executable}-rg").touch()
-    monkeypatch.setattr(runtime, "bundled_package_dir", lambda: tmp_path)
-    monkeypatch.setattr(runtime, "_current_platform_tag", lambda: "linux-x64")
+    monkeypatch.setattr(runtime, "bundled_package_dir", lambda **_kwargs: tmp_path)
+    monkeypatch.setattr(runtime, "_current_platform_tag", lambda **_kwargs: "linux-x64")
 
     with pytest.raises(FileNotFoundError, match="downloads.json"):
         runtime.bundled_runtime_path()
@@ -217,7 +218,7 @@ def test_node_mode_runs_the_deployed_dsh_cli(
     bin_js = tmp_path / "runtime" / "node" / "runtime-bootstrap.mjs"
     bin_js.parent.mkdir(parents=True)
     bin_js.touch()
-    monkeypatch.setattr(runtime, "bundled_package_dir", lambda: tmp_path)
+    monkeypatch.setattr(runtime, "bundled_package_dir", lambda **_kwargs: tmp_path)
     monkeypatch.setattr(runtime.shutil, "which", lambda _name: "/node")
 
     assert resolve_bundled_launch_args("node") == ("/node", str(bin_js))
@@ -321,8 +322,8 @@ def test_runtime_starts_independently_of_office_engine(
     if target.startswith("macos-"):
         Path(f"{executable}-spawn-helper").touch()
     office = _resource_sidecars(executable, native_targets)
-    monkeypatch.setattr(runtime, "bundled_package_dir", lambda: tmp_path)
-    monkeypatch.setattr(runtime, "_current_platform_tag", lambda: target)
+    monkeypatch.setattr(runtime, "bundled_package_dir", lambda **_kwargs: tmp_path)
+    monkeypatch.setattr(runtime, "_current_platform_tag", lambda **_kwargs: target)
     assert runtime.bundled_runtime_path() == executable
     engine = next(office.glob("node_modules/@deepseek-ai/libreoffice-kit-*/prebuilds.json"))
     engine.unlink()
@@ -342,13 +343,13 @@ def test_explicit_download_uses_runtime_without_a_harness_home(
     root = tmp_path / "中文缓存"
     root.mkdir()
     _resource_sidecars(root / "deepseek-harness-sdk-runtime-linux-x64")
-    monkeypatch.setattr(runtime, "_current_platform_tag", lambda: "linux-x64")
+    monkeypatch.setattr(runtime, "_current_platform_tag", lambda **_kwargs: "linux-x64")
     script = tmp_path / "download.py"
     destination = root / "linux-x64/primary-runtime" if resource == "primary" else root
     script.write_text("import json,os,sys\n" + f"assert os.environ['DSH_RUNTIME_DOWNLOAD'] == {resource!r}\n"
                       + f"sys.stdout.buffer.write(json.dumps({str(destination)!r}, ensure_ascii=False).encode('utf-8'))\n", encoding="utf-8")
     monkeypatch.delenv("DSH_HOME", raising=False)
-    monkeypatch.setattr(runtime, "resolve_bundled_launch_args", lambda: (sys.executable, str(script)))
+    monkeypatch.setattr(runtime, "resolve_bundled_launch_args", lambda **_kwargs: (sys.executable, str(script)))
     assert function() == destination
     script.write_text("import sys\nsys.stderr.buffer.write('下载失败'.encode('utf-8'))\nsys.exit(2)\n", encoding="utf-8")
     with pytest.raises(RuntimeError, match="下载失败"):
@@ -362,7 +363,7 @@ def test_download_decodes_utf8_in_an_ascii_locale(tmp_path: Path) -> None:
     script.write_text("import sys\nsys.stdout.buffer.write(" + json.dumps(str(destination), ensure_ascii=False).encode('utf-8').__repr__() + ")\n", encoding="utf-8")
     code = ("import sys,locale,deepseek_harness_runtime as r; "
             "assert locale.getpreferredencoding(False).lower() not in ('utf-8','utf8'); "
-            f"r.resolve_bundled_launch_args=lambda:(sys.executable,{str(script)!a}); "
+            f"r.resolve_bundled_launch_args=lambda **_kwargs:(sys.executable,{str(script)!a}); "
             f"assert str(r.download_office())=={str(destination)!a}")
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, encoding="utf-8", env={
         **os.environ, "LC_ALL": "C", "PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0",
@@ -377,8 +378,8 @@ def test_primary_download_rejects_an_incomplete_payload(tmp_path: Path, monkeypa
     _resource_sidecars(tmp_path / "deepseek-harness-sdk-runtime-linux-x64")
     root = tmp_path / "linux-x64"
     (root / missing).unlink()
-    monkeypatch.setattr(runtime, "_download", lambda resource: root / "primary-runtime")
-    monkeypatch.setattr(runtime, "_current_platform_tag", lambda: "linux-x64")
+    monkeypatch.setattr(runtime, "_download", lambda resource, **_kwargs: root / "primary-runtime")
+    monkeypatch.setattr(runtime, "_current_platform_tag", lambda **_kwargs: "linux-x64")
     with pytest.raises(FileNotFoundError):
         runtime.download_primary_runtime()
 

@@ -60,15 +60,47 @@ describe('web e2e: credential mask in user text', () => {
       return { mask: middle(value!.lastElementChild!), control: middle(control!) }
     })
     expect(Math.abs(centers.control - centers.mask)).toBeLessThanOrEqual(1)
-    const masked = { run: await run.boundingBox(), bubble: await text.boundingBox() }
+    await page.evaluate(() => document.fonts.ready)
+    const scale = await page.evaluate(() => window.devicePixelRatio)
+    const pixels = (box: { x: number; y: number; width: number; height: number } | null) => {
+      if (box === null) throw new Error('Secret text must have a visible box')
+      return [box.x, box.y, box.x + box.width, box.y + box.height].map(edge => Math.round(edge * scale))
+    }
+    const bounds = async () => ({ run: pixels(await run.boundingBox()), bubble: pixels(await text.boundingBox()) })
+    const masked = await bounds()
     await page.getByRole('button', { name: 'Show secret', exact: true }).click()
     await expect.poll(() => text.textContent()).toBe(PROMPT)
-    // The monospace run keeps one mask character per original character, so revealing does not move the line.
-    expect({ run: await run.boundingBox(), bubble: await text.boundingBox() }).toEqual(masked)
+    // Separate inline runs can differ by Chromium's 1/64 CSS-pixel rounding; their painted edges stay in the same device pixels.
+    expect(await bounds()).toEqual(masked)
+    await run.evaluate((element) => { element.style.transform = 'translateX(1px)' })
+    try { expect(await bounds()).not.toEqual(masked) }
+    finally { await run.evaluate((element) => { element.style.removeProperty('transform') }) }
+    expect(await bounds()).toEqual(masked)
     await page.getByRole('button', { name: 'Hide secret', exact: true }).click()
     await expect.poll(() => text.textContent()).not.toContain(KEY)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
-    await assertFixtureInventory(SNAPSHOT_DIR, ['bubble.expected.md'])
+  })
+
+  it('uses Japanese reveal controls while retaining the original user text', async () => {
+    await page.close()
+    page = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: 'ja-JP', timezoneId: 'Asia/Shanghai' })
+    tripwire = watchConsole(page)
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-user-text-secret-mask-ja'))
+    await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
+    await page.locator('[role="treeitem"]').first().click()
+    await page.locator('[role="treeitem"]').nth(1).click()
+    const reveal = page.getByRole('button', { name: '秘密情報を表示', exact: true })
+    await reveal.waitFor()
+    const text = page.locator('[class*="bubble"]', { has: page.locator('[data-secret]') })
+    await compareOrRefreshGolden(join(SNAPSHOT_DIR, 'bubble-ja.expected.md'), await text.ariaSnapshot(), MODE)
+    expect(await text.textContent()).not.toContain(KEY)
+    await reveal.click()
+    await expect.poll(() => text.textContent()).toBe(PROMPT)
+    await page.getByRole('button', { name: '秘密情報を隠す', exact: true }).click()
+    await expect.poll(() => text.textContent()).not.toContain(KEY)
+    expect(tripwire.pageErrors).toEqual([])
+    expect(tripwire.warnings).toEqual([])
+    await assertFixtureInventory(SNAPSHOT_DIR, ['bubble.expected.md', 'bubble-ja.expected.md'])
   })
 })

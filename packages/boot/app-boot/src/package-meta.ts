@@ -1,5 +1,7 @@
 /** Read plugin display text and icons through exported resources without evaluating plugin code. */
 
+import { defaultDiagnosticLocale, diagnosticMessages } from './diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { dirname, extname, isAbsolute, join, relative, resolve, sep, win32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,46 +22,48 @@ const ICON_MEDIA_TYPES = new Map([
 ])
 
 function iconOf(
-  specifier: string, packageName: string, parentURL: string, manifestPath: string | undefined, value: unknown,
+  specifier: string, packageName: string, parentURL: string, manifestPath: string | undefined, value: unknown, locale: DiagnosticLocale,
 ): string | undefined {
-  const icon = manifestPath === undefined ? undefined : textOf(value, `${manifestPath}: icon`)
+  const messages = diagnosticMessages(locale)
+  const icon = manifestPath === undefined ? undefined : textOf(value, `${manifestPath}: icon`, locale)
   let target: string
   // Diagnostics name the file the author edits: the declaring manifest or the exported image.
   let label: string
   if (manifestPath !== undefined && icon !== undefined) {
     if (isAbsolute(icon) || win32.isAbsolute(icon) || /^[A-Za-z][A-Za-z\d+.-]*:/u.test(icon)) {
-      throw new Error(`${manifestPath}: icon must be a relative file path`)
+      throw new Error(messages.iconMustBeARelativeFilePath(manifestPath))
     }
     label = manifestPath
     const root = realpathSync(dirname(manifestPath))
     target = resolve(root, icon)
     const local = relative(root, realModuleFile(target))
     if (local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local)) {
-      throw new Error(`${label}: icon must remain inside its manifest directory`)
+      throw new Error(messages.iconMustRemainInsideItsManifestDirectory(label))
     }
   } else {
-    const exported = optionalResourcePath(`${specifier}/icon`, parentURL)
+    const exported = optionalResourcePath(`${specifier}/icon`, parentURL, locale)
     if (exported === undefined) return undefined
     target = label = exported
-    assertPackageOwned(realModuleFile(target), packageName)
+    assertPackageOwned(realModuleFile(target), packageName, locale)
   }
   const mediaType = ICON_MEDIA_TYPES.get(extname(target).toLowerCase())
-  if (mediaType === undefined) throw new Error(`${label}: icon must be SVG, PNG, JPEG, or WebP`)
+  if (mediaType === undefined) throw new Error(messages.iconMustBeSVGPNGJPEGOrWebP(label))
   const file = realModuleFile(target)
   const stat = statSync(file)
-  if (!stat.isFile()) throw new Error(`${label}: icon must be a regular file`)
-  if (stat.size > MAX_ICON_BYTES) throw new Error(`${label}: icon exceeds 256 KiB`)
+  if (!stat.isFile()) throw new Error(messages.iconMustBeARegularFile(label))
+  if (stat.size > MAX_ICON_BYTES) throw new Error(messages.iconExceedsKiB(label))
   const bytes = readFileSync(file)
-  if (bytes.length > MAX_ICON_BYTES) throw new Error(`${label}: icon exceeds 256 KiB`)
+  if (bytes.length > MAX_ICON_BYTES) throw new Error(messages.iconExceedsKiB(label))
   return `data:${mediaType};base64,${bytes.toString('base64')}`
 }
 
 /** Require an ancestor of the real file whose package.json names the owning package. */
-function assertPackageOwned(file: string, name: string): void {
+function assertPackageOwned(file: string, name: string, locale: DiagnosticLocale): void {
+  const messages = diagnosticMessages(locale)
   for (let directory = dirname(file); ; directory = dirname(directory)) {
     const manifest = join(directory, 'package.json')
-    if (existsSync(manifest) && readObject(manifest).name === name) return
-    if (dirname(directory) === directory) throw new Error(`${file}: icon must remain inside its package directory`)
+    if (existsSync(manifest) && readObject(manifest, locale).name === name) return
+    if (dirname(directory) === directory) throw new Error(messages.iconMustRemainInsideItsPackageDirectory(file))
   }
 }
 
@@ -67,12 +71,16 @@ function assertPackageOwned(file: string, name: string): void {
  * Resolve a plugin resource through the active Node ESM resolver without evaluating it.
  * @param specifier - plugin module or exported resource specifier.
  * @param parentURL - owning module-resolution base.
+ * @param locale - captured diagnostic language; omitted, selects the process preference once.
  * @returns the local filesystem path selected by Node and the active profile.
  * @throws when the resolver is unavailable or the resource cannot resolve to a local file.
  */
-export function resolvePluginResource(specifier: string, parentURL: string): string {
+export function resolvePluginResource(
+  specifier: string, parentURL: string, locale: DiagnosticLocale = defaultDiagnosticLocale(),
+): string {
+  const messages = diagnosticMessages(locale)
   const loader = ModuleLoader.fromInternal()
-  if (loader === undefined) throw new Error('Plugin metadata requires the Node module resolver')
+  if (loader === undefined) throw new Error(messages.pluginMetadataRequiresTheNodeModuleResolver)
   const result = loader.version === 'v2'
     ? loader.resolveSync(parentURL, { specifier, attributes: {} })
     : loader.resolveSync(specifier, parentURL, {})
@@ -85,60 +93,63 @@ function missingResource(error: unknown): boolean {
     || code === 'MODULE_NOT_FOUND' || code === 'ENOENT' || code === 'ENOTDIR'
 }
 
-function optionalResourcePath(specifier: string, parentURL: string): string | undefined {
+function optionalResourcePath(specifier: string, parentURL: string, locale: DiagnosticLocale): string | undefined {
   try {
-    return resolvePluginResource(specifier, parentURL)
+    return resolvePluginResource(specifier, parentURL, locale)
   } catch (error) {
     if (missingResource(error)) return undefined
     throw error
   }
 }
 
-function objectOf(value: unknown, path: string): Record<string, unknown> {
+function objectOf(value: unknown, path: string, locale: DiagnosticLocale): Record<string, unknown> {
+  const messages = diagnosticMessages(locale)
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`${path} must be an object`)
+    throw new Error(messages.mustBeAnObject(path))
   }
   return value as Record<string, unknown>
 }
 
-function textOf(value: unknown, path: string): string | undefined {
+function textOf(value: unknown, path: string, locale: DiagnosticLocale): string | undefined {
+  const messages = diagnosticMessages(locale)
   if (value === undefined) return undefined
-  if (typeof value !== 'string' || value.trim() === '') throw new Error(`${path} must be a non-empty string`)
+  if (typeof value !== 'string' || value.trim() === '') throw new Error(messages.mustBeANonEmptyString(path))
   return value
 }
 
-function readObject(file: string): Record<string, unknown> {
+function readObject(file: string, locale: DiagnosticLocale): Record<string, unknown> {
   let contents: unknown
   try {
     contents = JSON.parse(readFileSync(file, 'utf8'))
   } catch (error) {
     throw new Error(`${file}: ${String(error)}`)
   }
-  return objectOf(contents, file)
+  return objectOf(contents, file, locale)
 }
 
 function fallbackText(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value : undefined
 }
 
-function dictionariesOf(englishPath: string, specifier: string, parentURL: string): Map<string, DisplayFields> {
+function dictionariesOf(englishPath: string, specifier: string, parentURL: string, locale: DiagnosticLocale): Map<string, DisplayFields> {
+  const messages = diagnosticMessages(locale)
   const dictionaries = new Map<string, DisplayFields>()
   for (const entry of readdirSync(dirname(englishPath), { withFileTypes: true })) {
     if (!entry.name.endsWith('.json')) continue
     const resource = `${specifier}/locale/${entry.name}`
     const language = entry.name.slice(0, -5)
-    if (!LANGUAGE_ID.test(language)) throw new Error(`${resource} must use a language id as its filename`)
+    if (!LANGUAGE_ID.test(language)) throw new Error(messages.mustUseALanguageIdAsItsFilename(resource))
     const id = language.toLowerCase()
-    if (dictionaries.has(id)) throw new Error(`${resource} duplicates locale ${id}`)
-    const file = resolvePluginResource(resource, parentURL)
+    if (dictionaries.has(id)) throw new Error(messages.duplicatesLocale(resource, id))
+    const file = resolvePluginResource(resource, parentURL, locale)
     if (dirname(file) !== dirname(englishPath)) {
-      throw new Error(`${resource}: ${file} must share the English locale directory ${dirname(englishPath)}`)
+      throw new Error(messages.mustShareTheEnglishLocaleDirectory(resource, file, dirname(englishPath)))
     }
-    const parsed = readObject(file)
-    const meta = parsed.meta === undefined ? undefined : objectOf(parsed.meta, `${file}: meta`)
+    const parsed = readObject(file, locale)
+    const meta = parsed.meta === undefined ? undefined : objectOf(parsed.meta, `${file}: meta`, locale)
     dictionaries.set(id, {
-      title: textOf(meta?.title, `${file}: meta.title`),
-      description: textOf(meta?.description, `${file}: meta.description`),
+      title: textOf(meta?.title, `${file}: meta.title`, locale),
+      description: textOf(meta?.description, `${file}: meta.description`, locale),
     })
   }
   return dictionaries
@@ -170,16 +181,21 @@ function localizedText(
  * for titles and empty for descriptions.
  * @param specifier - configured plugin module name, including any package subpath.
  * @param parentURL - owning Loader tree's module-resolution base.
+ * @param locale - captured diagnostic language; omitted, selects the process preference once.
  * @returns display fields and any resource diagnostic, or undefined for non-package specifiers or absent metadata.
  */
-export function readPluginMeta(specifier: string, parentURL: string): PluginLocalizedMeta | undefined {
+export function readPluginMeta(
+  specifier: string, parentURL: string, locale: DiagnosticLocale = defaultDiagnosticLocale(),
+): PluginLocalizedMeta | undefined {
+  const messages = diagnosticMessages(locale)
   const packageName = barePackageName(specifier)
   if (packageName === undefined) return undefined
   try {
-    const englishPath = optionalResourcePath(`${specifier}/locale/en.json`, parentURL)
-    const dictionaries = englishPath === undefined ? new Map<string, DisplayFields>() : dictionariesOf(englishPath, specifier, parentURL)
-    const manifestPath = packageName === specifier ? optionalResourcePath(`${specifier}/package.json`, parentURL) : undefined
-    const manifest = manifestPath === undefined ? undefined : readObject(manifestPath)
+    const englishPath = optionalResourcePath(`${specifier}/locale/en.json`, parentURL, locale)
+    const dictionaries = englishPath === undefined
+      ? new Map<string, DisplayFields>() : dictionariesOf(englishPath, specifier, parentURL, locale)
+    const manifestPath = packageName === specifier ? optionalResourcePath(`${specifier}/package.json`, parentURL, locale) : undefined
+    const manifest = manifestPath === undefined ? undefined : readObject(manifestPath, locale)
     const title = localizedText('title', dictionaries, fallbackText(manifest?.name), specifier)
     const description = localizedText('description', dictionaries, fallbackText(manifest?.description), '')
     const text = {
@@ -188,13 +204,13 @@ export function readPluginMeta(specifier: string, parentURL: string): PluginLoca
     }
     let icon: string | undefined
     try {
-      icon = iconOf(specifier, packageName, parentURL, manifestPath, manifest?.icon)
+      icon = iconOf(specifier, packageName, parentURL, manifestPath, manifest?.icon, locale)
     } catch (error) {
-      return { ...text, error: `Plugin metadata for ${specifier}: ${String(error)}` }
+      return { ...text, error: messages.metadataFailure(specifier, String(error)) }
     }
     if (title === undefined && description === undefined && icon === undefined) return undefined
     return { ...text, ...icon === undefined ? {} : { icon } }
   } catch (error) {
-    return { error: `Plugin metadata for ${specifier}: ${String(error)}` }
+    return { error: messages.metadataFailure(specifier, String(error)) }
   }
 }

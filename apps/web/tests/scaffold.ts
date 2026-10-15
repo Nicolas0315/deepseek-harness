@@ -1541,7 +1541,7 @@ export async function readPersistedEvents(scaffold: WebScaffold, id: SessionId):
  * (26333 tok/s for a 3 ms stream).
  */
 /**
- * Relative-time buckets rendered by a dated row, in both dictionaries.
+ * Relative-time buckets rendered by a dated row, in the English and Chinese dictionaries.
  *
  * Opt-in per capture: a session-tree golden asserts its own literal age (a
  * fresh row reads `now`, an older one does not), so collapsing the vocabulary
@@ -1572,7 +1572,7 @@ function normalizeAria(snapshot: string, workspaceCwd: string, age: boolean): st
       /约\d+(?:年(?:\d+个月)?|个月(?:\d+天)?)|\d+(?:天(?:\d+小时(?:\d+分\d+秒)?)?|小时\d+分\d+秒|分\d+秒|(?:\.\d+)?秒)/g,
       duration => duration.startsWith('约') ? duration : '{{duration}}',
     )
-    .replace(/\d+(?:\.\d+)?(?= tok\/s(?!\w))/g, '{{throughput}}')
+    .replace(/\d+(?:\.\d+)?(?= (?:tok\/s(?!\w)|トークン\/秒))/g, '{{throughput}}')
     // Seeded compaction prices realized file paths, whose length differs
     // between local worktrees and CI scratch directories.
     .replace(/(Compacted \d+ history items \(~)\d+( tokens\))/g, '$1{{tokens}}$2')

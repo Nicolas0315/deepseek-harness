@@ -1,4 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
+import { hmrMessages, resolveHmrLocale } from './diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import type { BuildFailure } from 'esbuild'
 import { codeFrameColumns } from '@babel/code-frame'
 import { readFileSync } from 'node:fs'
@@ -12,8 +14,9 @@ function isBuildFailure(e: unknown): e is BuildFailure {
 /** Log HMR build failures with code frames when source locations are available.
  * @param ctx Context owning reload diagnostics.
  * @param e Failure from the module loader or compiler.
+ * @param language Captured diagnostic language; omission resolves the context launch environment once.
  */
-export function handleError(ctx: Context, e: unknown): void {
+export function handleError(ctx: Context, e: unknown, language: DiagnosticLocale = resolveHmrLocale(ctx)): void {
   if (!isBuildFailure(e)) {
     ctx.logger.warn(e)
     return
@@ -33,7 +36,7 @@ export function handleError(ctx: Context, e: unknown): void {
         highlightCode: true,
         message: error.text,
       })
-      ctx.logger.warn(`File: ${file}:${line}:${column}\n` + formatted)
+      ctx.logger.warn(`${hmrMessages(language).file}: ${file}:${line}:${column}\n` + formatted)
     } catch (e) {
       ctx.logger.warn(e)
     }

@@ -20,3 +20,6 @@ export const en = {
   reject: 'Reject',
   allowOnce: 'Allow once',
 } satisfies Record<ApprovalKey, string>
+
+/** Japanese copy, checked against the complete namespace key set. */
+export const ja = { waiting: '承認を待っています', 'detail.aria': '承認の詳細', escalation: 'ツール {toolName} が権限の昇格を要求しています', reject: '拒否', allowOnce: '今回のみ許可' } satisfies Record<ApprovalKey, string>

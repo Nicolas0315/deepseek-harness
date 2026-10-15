@@ -19,6 +19,16 @@ $compileLines = @('@echo off', ('call "{0}" >nul' -f $vcvars), 'if errorlevel 1 
 & $env:ComSpec /d /c $compileScript
 if ($LASTEXITCODE -ne 0) { throw 'Native installer helper compilation failed.' }
 if ($TestProgress -or $CompileProgressOnly) {
+    $localeSource = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../tests/windows-installer-locale.cpp'))
+    $localeExecutable = Join-Path $output 'locale-test.exe'
+    $localeScript = Join-Path $output 'compile-locale-test.cmd'
+    [IO.File]::WriteAllLines($localeScript, @('@echo off', ('call "{0}" >nul' -f $vcvars), 'if errorlevel 1 exit /b %errorlevel%', ('cl /nologo /MT /W4 /WX /EHsc "{0}" /Fo"{1}" /Fe"{2}" /link "{3}" user32.lib' -f $localeSource, (Join-Path $output 'locale-test.obj'), $localeExecutable, (Join-Path $output 'window-frame.lib'))), [Text.Encoding]::Default)
+    & $env:ComSpec /d /c $localeScript
+    if ($LASTEXITCODE -ne 0) { throw 'Installer locale test compilation failed.' }
+    if ($TestProgress) {
+        & $localeExecutable (Join-Path $installerRoot 'assets/brand.png')
+        if ($LASTEXITCODE -ne 0) { throw 'Installer locale rendering regression failed.' }
+    }
     $cleanupSource = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../tests/windows-uninstall-data.cpp'))
     # UAC installer detection demands elevation from unmanifested executables named after installation.
     $cleanupExecutable = Join-Path $output 'data-cleanup-test.exe'

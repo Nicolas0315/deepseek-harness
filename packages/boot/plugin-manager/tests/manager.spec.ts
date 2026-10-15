@@ -23,6 +23,8 @@ import { Group } from '@deepseek-ai/cordis-plugin-loader'
 import * as operations from '../src/operations.ts'
 import * as githubConnection from '../src/github-connection.ts'
 import { parse, parseDocument } from 'yaml'
+import { createLaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
+import * as diagnostics from '../src/diagnostics.ts'
 import { isolateGitCommandLineConfig } from './git-environment.ts'
 
 // These cases install through real Git and pnpm, so the host's command-line configuration group must not reach their children.
@@ -1684,4 +1686,56 @@ it.each(['absent', 'bundle', 'not-bundle', 'unreadable'])('keeps a missing sourc
   })
   expect((await manager.listBundles()).find(item => item.name === name)?.error?.diagnostic).toContain('restore the checkout')
   expect((await manager.listBundles()).find(item => item.name === name)?.installTarget).toBeUndefined()
+})
+
+it.each(['invalid specs', 'cancellation', 'build policy'])('keeps the captured Japanese language for %s with an English process', async (caseName) => {
+  vi.stubEnv('DSH_LANG', 'en')
+  onTestFinished(() => { vi.unstubAllEnvs() })
+  const { manager, dir } = await fixture('startup', false, (ctx) => {
+    ctx.provide('launchEnvironment', createLaunchEnvironmentSnapshot([{ source: 'process', values: { DSH_LANG: 'ja' } }]))
+  })
+  if (caseName === 'invalid specs') {
+    expect(await manager.inspect('bad package')).toMatchObject({ status: 'refused', reason: 'レジストリが受け付けるパッケージ名ではありません' })
+    return
+  }
+  if (caseName === 'build policy') {
+    writeFileSync(join(dir, 'pnpm-workspace.yaml'), 'allowBuilds: false\n')
+    expect(await manager.installBundle('dsh-x', { approvedBuilds: ['native'] })).toMatchObject({
+      application: 'failed', error: { code: 'operation-error', diagnostic: 'allowBuilds は YAML マッピングにしてください' },
+    })
+    return
+  }
+  const messages = vi.spyOn(diagnostics, 'diagnosticMessages')
+  const requestId = '11111111-1111-4111-8111-111111111111' as PluginInstallRequestId
+  const read = vi.spyOn(operations, 'readProfileRegistry').mockImplementation(async () => {
+    void manager.cancelInstall(requestId)
+    return OFFICIAL
+  })
+  onTestFinished(() => { messages.mockRestore(); read.mockRestore() })
+  expect(await manager.installBundle('dsh-x', { requestId })).toMatchObject({ application: 'cancelled' })
+  expect(messages).toHaveBeenCalled()
+  expect(messages.mock.calls.every(([locale]) => locale === 'ja')).toBe(true)
+})
+
+it.each(['locale', 'icon'])('uses the captured Japanese language for nested bundle %s metadata failures', async (kind) => {
+  vi.stubEnv('DSH_LANG', 'en')
+  onTestFinished(() => { vi.unstubAllEnvs() })
+  const { manager, dir } = await fixture('startup', false, (ctx) => {
+    ctx.provide('launchEnvironment', createLaunchEnvironmentSnapshot([{ source: 'process', values: { DSH_LANG: 'ja' } }]))
+  })
+  const packageDir = join(dir, 'node_modules', 'extra')
+  const filename = join(packageDir, 'package.json')
+  const manifest = readProfileManifest('test', packageDir)
+  writeFileSync(filename, JSON.stringify({ ...manifest, exports: {
+    './package.json': './package.json', './locale/*.json': './locale/*.json',
+  }, ...kind === 'icon' ? { icon: '/outside.svg' } : {} }))
+  mkdirSync(join(packageDir, 'locale'))
+  writeFileSync(join(packageDir, 'locale', 'en.json'), '{"meta":{"title":"English title"}}')
+  writeFileSync(join(packageDir, 'locale', 'ja.json'), kind === 'locale' ? '{"meta":null}' : '{"meta":{"title":"日本語タイトル"}}')
+  const meta = (await manager.listBundles()).find(row => row.name === 'extra')?.meta
+  const detail = kind === 'locale'
+    ? `${join(packageDir, 'locale', 'ja.json')}: meta はオブジェクトにしてください`
+    : `${filename}: icon は相対ファイルパスにしてください`
+  expect(meta?.error).toBe(`extra のプラグインメタデータ: Error: ${detail}`)
+  if (kind === 'icon') expect(meta?.title).toEqual({ en: 'English title', ja: '日本語タイトル' })
 })

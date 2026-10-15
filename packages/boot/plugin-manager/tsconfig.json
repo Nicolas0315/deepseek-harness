@@ -64,6 +64,15 @@
     },
     {
       "path": "../../interaction/user-approval"
+    },
+    {
+      "path": "../../util/diagnostic-locale"
+    },
+    {
+      "path": "../cmdline"
+    },
+    {
+      "path": "../../util/launch-environment"
     }
   ]
 }

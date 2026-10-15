@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包可为会话历史增加带排序的 SQLite FTS5 搜索，既能跨会话搜索，也能在单个会话内搜索，并支持游标分页。它把实时与持久化历史索引到独立的派生数据库，因此搜索反映当前状态，同时不会修改会话持久化存储。精确读取、过滤与追踪仍通过同一查询 API 提供。已发布组合中的搜索是可选能力；配置 `openAt` 可让索引在启动时、首次搜索时打开，或永不打开。结果匹配 token 与短语，而非任意子字符串；每个索引路径只能由一个进程持有。
+使用本包可为会话历史增加带排序的 SQLite FTS5 搜索，既能跨会话搜索，也能在单个会话内搜索，并支持游标分页。它把实时与持久化历史索引到独立的派生数据库，因此搜索反映当前状态，同时不会修改会话持久化存储。精确读取、过滤与追踪仍通过同一查询 API 提供。已发布组合中的搜索是可选能力；配置 `openAt` 可让索引在启动时、首次搜索时打开，或永不打开。结果匹配拉丁文 token 与短语，并支持日文文本内的字符短语；每个索引路径只能由一个进程持有。
 
 ## 目录
 
@@ -58,9 +58,9 @@ kind: "package-reference"
 
 `searchSessions` 搜索整个语料库，并按每个会话匹配最强的事件分组结果；`searchEvents` 搜索一个逻辑会话。查询是字面短语：首尾空白会被移除、内部空白会被规范化，引号、`OR`、`NEAR` 和 `*` 等 FTS5 语法被视为数据，绝不作为可执行查询语法。元数据过滤器（会话 id、cwd、创建时间、父级、可用性、事件 seq/时间/类型/表层）在排序前缩小结果。默认搜索全部 `current`、`shadowed` 与 `log-only` 事件；传入表层过滤器可缩小范围。
 
-排序是确定性的：实际 FTS5 高亮匹配 span 更多的在前，然后文档更短的在前，事件时间、会话 id 与 seq 打破平局。结果携带按 `snippetChars` 个 Unicode 码点截断的纯文本摘录，没有提供方专用数值分数。分页通过不透明 `SessionSearchCursor` 延续，游标绑定到规范化后的确切请求；相关语料库变化时游标变为陈旧（`SESSION_QUERY_STALE_CURSOR`），会话内游标可在不相关会话变化后延续，跨会话游标则不能。
+排序是确定性的：实际 FTS5 高亮匹配 span 更多的在前（取原文与日文索引中的较大计数，不重复累加），然后文档更短的在前，事件时间、会话 id 与 seq 打破平局。结果携带按 `snippetChars` 个 Unicode 码点截断的纯文本摘录，没有提供方专用数值分数。分页通过不透明 `SessionSearchCursor` 延续，游标绑定到规范化后的确切请求；相关语料库变化时游标变为陈旧（`SESSION_QUERY_STALE_CURSOR`），会话内游标可在不相关会话变化后延续，跨会话游标则不能。
 
-`unicode61` tokenizer 匹配 token 与短语，而非任意子字符串：`AI` 不匹配 token `BRAID`。需要执行字面、空白灵活的字符串子串扫描时，使用带 `text` 子句的 `ctx.sessionQuery.filterEvents()`。
+日文文本还支持在没有空格的句子中按字符短语查找：`日本語` 可以找到 `これは日本語の文章です`，单字符和双字符查询也有效。辅助 `unicode61` 列分隔日文字符，并按字素执行 NFKC 规范化，因此半角假名和分解的浊音符能匹配规范化后的写法。仅含全角拉丁字母和数字的消息也能匹配规范化后的写法。表意文字变体选择符不会阻止基本字符匹配。拉丁字母与数字串仍保持完整，包括 `APIを使う` 这样的混合文本；`AI` 仍不匹配 `BRAID`。这是字符召回，不进行读音转换或平假名／片假名转写。摘要保留原始写法、码点与标点；投影中的分隔符不会出现在结果中。需要超出这些索引匹配的字面、空白灵活的子字符串扫描时，使用带 `text` 子句的 `ctx.sessionQuery.filterEvents()`。
 
 ### 何时推迟或关闭搜索
 
@@ -87,9 +87,9 @@ kind: "package-reference"
 - **派生索引，绝不动源存储。** FTS 行存放在专用可丢弃数据库中；这里的代码从不打开 session-persistence 数据库。
 - **实时优先的观察。** 一个串行化状态机比较持久化快照修订，只通过短生命周期读取句柄读取新增或已更改日志，并在一个事务中对账，因此搜索反映最新的稳定状态。
 - **世代绑定的游标。** 每次语料库变化都会递增世代；游标携带其创建时的世代，宁可陈旧失败也不返回偏移后的页面。
-- **字面短语即数据。** 调用方查询文本被引成一个 FTS5 短语，查询语法保持惰性；保留高亮标记在索引前从文档中剥离。
+- **字面短语即数据。** 调用方原始与投影文本被引用为限定到相应列的 FTS5 短语，查询语法保持惰性；保留高亮标记在索引前从文档中剥离。
 
-设计历史记录在 [SQLite FTS5 会话搜索笔记](../../../.agents/notes/archived/feature/2026-07-10-sqlite-session-query-provider.md)与[统一服务决策](../../../.agents/notes/archived/architecture/2026-07-23-unified-session-query-service.md)中。
+日文索引的理由记录在[日文会话搜索笔记](../../../.agents/notes/implemented/feature/2026-10-14-japanese-session-search.zh.md)中。较早的设计历史记录在 [SQLite FTS5 会话搜索笔记](../../../.agents/notes/archived/feature/2026-07-10-sqlite-session-query-provider.md)与[统一服务决策](../../../.agents/notes/archived/architecture/2026-07-23-unified-session-query-service.md)中。
 
 ### 源码地图
 
@@ -97,6 +97,7 @@ kind: "package-reference"
 |---|---|
 | [`src/index.ts`](src/index.ts) | 服务：配置、openAt 生命周期、串行化对账、查询执行、游标 |
 | [`src/query.ts`](src/query.ts) | 请求规范化、参数化谓词、摘录、谓词与绑定预算 |
+| [`src/japanese-search.ts`](src/japanese-search.ts) | 日文字符投影，以及将摘要位置映射回原始码点 |
 | [`src/schema.ts`](src/schema.ts) | 数据库 schema、application id 归属、原地重置、仅所有者文件创建 |
 
 ### 索引生命周期
@@ -105,7 +106,7 @@ kind: "package-reference"
 
 ### Schema 归属
 
-数据库携带 application id 与 schema 版本 8。打开时拒绝其他应用程序拥有的文件或规范数据库，拒绝未知用户表；只有已识别的不兼容派生 schema 才会原地重置——因此不相关或 session-persistence 数据库绝不会被触碰。在 POSIX 文件系统上，缺失的目录与数据库文件以仅所有者可访问的方式创建（进程 umask 前为 `0700` 与 `0600`）。每个派生索引路径在一个进程中只能由一个服务拥有；世代与 TEMP 遮蔽状态由连接持有。
+数据库携带 application id 与 schema 版本 9。打开时拒绝其他应用程序拥有的文件或规范数据库，拒绝未知用户表；只有已识别的不兼容派生 schema 才会原地重置——因此不相关或 session-persistence 数据库绝不会被触碰。在 POSIX 文件系统上，缺失的目录与数据库文件以仅所有者可访问的方式创建（进程 umask 前为 `0700` 与 `0600`）。每个派生索引路径在一个进程中只能由一个服务拥有；世代与 TEMP 遮蔽状态由连接持有。
 
 </details>
 
@@ -142,7 +143,7 @@ kind: "package-reference"
 
 - **无调用方授权**——这是上下文范围内的可信服务；模型工具或 UI 必须强制执行自己的访问策略。
 - **同步查询执行**——`DatabaseSync` 在 MATCH 执行期间会阻塞 JavaScript 线程，且无法中断已运行的语句。
-- **Token 召回，而非任意子字符串**——`unicode61` tokenizer 不会匹配更大 token 中的子字符串；对字面扫描使用 `filterEvents()`。
+- **拉丁文 token 召回**——拉丁字母和数字串仍保持完整 token；任意字面子字符串扫描使用 `filterEvents()`。日文投影只对包含日文字符的文档增加索引存储。
 - **单一所有者的派生索引**——每个索引路径必须仅归一个进程中的一个服务所有；不支持外部写入者与多进程共享。
 
 <a id="dev-note"></a>
@@ -155,6 +156,6 @@ kind: "package-reference"
 
 #### 未来：其他 tokenizer 与搜索提供方
 
-`unicode61` tokenizer 的选择牺牲子字符串召回，以换取较小的索引体积与双字符 token 支持；trigram 备选方案经实测后被否决。切换 tokenizer 或增加另一个搜索后端会改变索引召回，并需要各自的对账与世代方案。
+原始 `unicode61` 列保留拉丁文 token 语义；辅助日文列提供短字符短语召回。统一改用 trigram tokenizer 会失去单字符和双字符查询，并改变拉丁文召回。切换 tokenizer 或增加另一个搜索后端会改变索引召回，并需要各自的对账与世代方案。
 
 </details>

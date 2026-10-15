@@ -91,6 +91,24 @@ describe('document language', () => {
     await vi.waitFor(() => { expect(langOf()).toBe('en') })
   })
 
+  it('loads a stored Japanese preference and switches its UI copy live', async () => {
+    const { ctx, locale } = await bench('ja')
+    try {
+      await vi.waitFor(() => { expect(locale.getLocale().active).toBe('ja') })
+      expect(langOf()).toBe('ja')
+      const t = locale.bind('common')
+      expect(t('cancel')).toBe('キャンセル')
+      expect(locale.bind('settings.locale')('language.title')).toBe('言語')
+      locale.setLocale('en')
+      expect(t('cancel')).toBe('Cancel')
+      locale.setLocale('ja')
+      expect(t('cancel')).toBe('キャンセル')
+      expect(langOf()).toBe('ja')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('uses an external locale definition for the document language', async () => {
     const { locale } = await bench()
     locale.addLanguage({ id: 'pt-BR', label: 'Português', fallback: 'en' })
@@ -103,7 +121,7 @@ describe('document language', () => {
     const observer = new MutationObserver(() => {})
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] })
     try {
-      const remove = locale.addLanguage({ id: 'ja', label: '日本語', fallback: 'en' })
+      const remove = locale.addLanguage({ id: 'fr', label: 'Français', fallback: 'en' })
       expect(observer.takeRecords()).toHaveLength(0)
       remove()
       expect(observer.takeRecords()).toHaveLength(0)

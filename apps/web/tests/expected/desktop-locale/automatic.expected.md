@@ -1,38 +1,38 @@
-- dialog "设置":
+- dialog "設定":
   - navigation:
-    - text: 设置
-    - button "通用设置"
-    - button "模型"
-    - button "内置插件"
-    - button "Agent 预设"
-  - button "打开配置文件"
-  - button "关闭"
-  - text: 权限 选择新会话的默认权限模式
-  - button "工作区内修改"
-  - text: 语言
-  - button "中文"
-  - text: 外观
-  - button "浅色"
-  - button "深色"
-  - button "跟随系统" [pressed]
-  - text: 字号大小 仅影响会话内容的字号 14
-  - button "增大字号"
-  - button "减小字号"
+    - text: 設定
+    - button "一般"
+    - button "モデル"
+    - button "組み込みプラグイン"
+    - button "エージェントプリセット"
+  - button "設定ファイルを開く"
+  - button "閉じる"
+  - text: 権限 新しいセッションの既定の権限モードを選択します
+  - button "ワークスペースへの書き込み"
+  - text: 言語
+  - button "日本語"
+  - text: 外観
+  - button "ライト"
+  - button "ダーク"
+  - button "システム設定" [pressed]
+  - text: 文字サイズ 会話内容の文字サイズにのみ適用します 14
+  - button "文字を大きくする"
+  - button "文字を小さくする"
   - text: px
-  - button "更多字体设置"
-  - text: 工作步骤展示 选择希望看到多少工具调用细节
-  - button "标准"
-  - text: 工作步骤收起时机 选择何时自动收起工作步骤
-  - button "回答结束后"
-  - text: 显示代码工作视图 开启后，显示轨迹、本轮代码差异，可选择完整的 Agent 预设切换
-  - switch "显示代码工作视图" [checked]
-  - text: 快捷键
-  - paragraph: 查看和编辑当前可用的快捷键和输入操作
-  - button "编辑快捷键"
-  - text: 繁忙时的发送行为 智能体运行时 Enter 键和发送按钮的行为；Cmd/Ctrl+Enter 使用另一行为
-  - button "排队发送"
-  - text: 性能与用量 选择性能与用量信息展示的详细程度
-  - button "详细"
-  - text: 在使用官方模型 API 时上传 Session Log 帮助改进 DeepSeek 模型与产品
-  - switch "在使用官方模型 API 时上传 Session Log"
-  - text: 当前版本：{{version}}
+  - button "その他のフォント設定"
+  - text: 作業の詳細表示 ツール呼び出しの詳細をどの程度表示するか選択します
+  - button "標準"
+  - text: 作業の詳細を折りたたむタイミング 作業の詳細を自動で折りたたむタイミングを選択します
+  - button "応答の完了時"
+  - text: コーディング表示を有効にする 作業経過、コード差分、すべての Agent プリセットを表示します
+  - switch "コーディング表示を有効にする" [checked]
+  - text: キーボードショートカット
+  - paragraph: 利用可能なショートカットと入力操作を確認・編集
+  - button "ショートカットを編集"
+  - text: 実行中の送信動作 エージェントの実行中に Enter キーと送信ボタンで行う操作。Cmd/Ctrl+Enter ではもう一方の操作を行います
+  - button "キューに追加"
+  - text: 性能と使用量 性能と使用量の情報をどの程度詳しく表示するか選択します
+  - button "詳細"
+  - text: 公式モデル API の利用時にセッションログをアップロードする DeepSeek のモデルと製品の改善に協力します。
+  - switch "公式モデル API の利用時にセッションログをアップロードする"
+  - text: "現在のバージョン: {{version}}"

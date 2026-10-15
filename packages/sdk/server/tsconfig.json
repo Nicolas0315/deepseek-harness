@@ -9,6 +9,9 @@
   ],
   "references": [
     {
+      "path": "../../boot/cmdline"
+    },
+    {
       "path": "../../../vendor/cordis"
     },
     {
@@ -37,6 +40,9 @@
     },
     {
       "path": "../../session/working-directory"
+    },
+    {
+      "path": "../../util/diagnostic-locale"
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { zoomEn, zoomZh } from '../zoom/locales.ts'
+import { zoomEn, zoomJa, zoomZh } from '../zoom/locales.ts'
 
 /** Copy owned by the PDF renderer. */
 export const zh = {
@@ -36,4 +36,18 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     /** PDF page, loading, and failure messages. */
     sidebarPdf: PdfLocaleKey
   }
+}
+
+/** Japanese dictionary, checked against the complete source key set. */
+export const ja: Record<keyof typeof en, string> = {
+  'title': 'PDF',
+  'pageImage': 'PDF {page} ページ',
+  'loading': '文書を表示中…',
+  'rendering': 'ページを描画中…',
+  'failed': 'PDF を表示できません：{message}',
+  'password': 'この PDF にはパスワードが必要です。パスワード付きファイルのプレビューには対応していません。',
+  'workerFailed': 'PDF の描画処理を継続できませんでした。再試行してください。',
+  'unsupported': 'PDF のプレビューにはファイル全体の内容が必要です。',
+  'retry': '再試行',
+  ...zoomJa,
 }

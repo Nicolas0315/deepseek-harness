@@ -1,4 +1,6 @@
 /** Compatibility checks at the composition entry points DSH owns; no Loader instrumentation. */
+import { diagnosticMessages, resolveBootLocale } from './diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, extname, isAbsolute, join } from 'node:path'
@@ -26,9 +28,9 @@ function patchWarning(ctx: Context): (message: string, ...args: unknown[]) => vo
   }
 }
 
-function manifestOf(ctx: Context, name: string, parentURL: string): object | undefined {
+function manifestOf(ctx: Context, name: string, parentURL: string, locale: DiagnosticLocale): object | undefined {
   if (name.startsWith('cordis:')) return undefined
-  const specifier = name.startsWith('#') ? resolvePluginResource(name, parentURL) : name
+  const specifier = name.startsWith('#') ? resolvePluginResource(name, parentURL, locale) : name
   const packages = ctx.get('pluginPackages')
   const pkg = packages?.packageOf(specifier, parentURL)
   if (pkg !== undefined) return readManifest(pkg.manifestPath)
@@ -68,19 +70,22 @@ function manifestOf(ctx: Context, name: string, parentURL: string): object | und
  * @param entries Complete effective entry list, after patch composition.
  * @param parentURL Resolution base of the tree that will import these rows.
  * @param binName Diagnostic prefix for a denied row; defaults to `dsh`.
+ * @param locale Diagnostic language captured for this composition.
  * @returns Detached rows with incompatible entries denied; reads the profile compatibility file once.
  * @throws For malformed compatibility permissions or a profile composition without a resolution base.
  */
 export function prepareProfileEntries(
   ctx: Context, entries: readonly EntryOptions[], parentURL: string | undefined, binName = 'dsh',
+  locale: DiagnosticLocale = resolveBootLocale(ctx),
 ): EntryOptions[] {
+  const messages = diagnosticMessages(locale)
   // Admission runs before the composed tree mounts, so no plugin-owned logger exporter exists yet;
   // composition-stage diagnostics go to stderr like the profile launcher's skipped-bundle report.
   return preflight(ctx, entries, parentURL, (row, reason) => {
     // Preset rows may omit ids, and a bundle row's name is its resolved module URL.
     const label = typeof row.id === 'string' ? `row ${JSON.stringify(row.id)}` : row.name
-    process.stderr.write(`${binName}: disabling profile plugin ${label}: ${reason}\n`)
-  }).rows
+    process.stderr.write(messages.profilePluginDisabled(binName, label, reason))
+  }, locale).rows
 }
 
 /** Denial reporter invoked once per denied row. */
@@ -88,27 +93,29 @@ type DenialReporter = (row: EntryOptions, reason: string) => void
 
 function preflight(
   ctx: Context, entries: readonly EntryOptions[], parentURL: string | undefined, report: DenialReporter,
+  locale: DiagnosticLocale,
 ) {
+  const messages = diagnosticMessages(locale)
   const rows = structuredClone(entries) as EntryOptions[]
   const profile = ctx.get('profileContext')
   if (profile === undefined) return { rows, blocked: false }
-  if (parentURL === undefined) throw new Error('Profile compatibility preflight requires a resolution base')
+  if (parentURL === undefined) throw new Error(messages.profileCompatibilityPreflightRequiresAResolutionBase)
   // A damaged permission file authorizes nothing, but it must not stop the profile from starting.
-  const { exemptions, warnings } = readProfileCompatibility(profile.dir)
+  const { exemptions, warnings } = readProfileCompatibility(profile.dir, locale)
   for (const warning of warnings) process.stderr.write(`${warning}\n`)
   const includes = new Set<string>()
   /** Only a compatibility conflict denies a row; every other failure keeps the Loader's own diagnosis. */
   const denial = (row: EntryOptions, base: string): string | undefined => {
     try {
-      const manifest = manifestOf(ctx, row.name, base)
+      const manifest = manifestOf(ctx, row.name, base, locale)
       if (manifest === undefined) return undefined
-      const issue = evaluatePluginCompatibility(manifest, exemptions)
-      return issue === undefined || issue.exempted ? undefined : pluginCompatibilityWarning(issue)
+      const issue = evaluatePluginCompatibility(manifest, exemptions, undefined, locale)
+      return issue === undefined || issue.exempted ? undefined : pluginCompatibilityWarning(issue, locale)
     } catch (error) {
       // Peer metadata that cannot be read or validated is refused rather than silently admitted.
       /* v8 ignore next -- every reader and parser used here rejects with an Error. */
       const detail = error instanceof Error ? error.message : String(error)
-      return `its declared peer dependencies cannot be validated: ${detail}`
+      return messages.peerValidationFailed(detail)
     }
   }
   const deny = (row: EntryOptions, reason: string): void => {
@@ -159,7 +166,7 @@ function preflight(
       if (!Array.isArray(data)) return undefined
       const children = applyEntryPatches(data as EntryOptions[], config.patches, patchWarning(ctx))
       return check(children, pathToFileURL(filename).href)
-        ? `its included file ${filename} reaches an incompatible plugin, and that file is never rewritten`
+        ? messages.incompatibleInclude(filename)
         : undefined
     } finally {
       includes.delete(filename)
@@ -175,13 +182,15 @@ function preflight(
  * @param patches Original ordered profile patches; these remain unchanged.
  * @param parentURL Root Include's resolution base.
  * @param binName Diagnostic prefix for a denied row; defaults to `dsh`.
+ * @param locale Diagnostic language captured for this composition.
  * @returns One prepared insertion patch for profiles, or the original patches for non-profile callers.
  */
 export function prepareProfilePatches(
   ctx: Context, patches: PatchOptions[], parentURL: string, binName = 'dsh',
+  locale: DiagnosticLocale = resolveBootLocale(ctx),
 ): PatchOptions[] {
   if (ctx.get('profileContext') === undefined) return patches
   const entries = applyEntryPatches([], patches, patchWarning(ctx))
-  const rows = prepareProfileEntries(ctx, entries, parentURL, binName)
+  const rows = prepareProfileEntries(ctx, entries, parentURL, binName, locale)
   return rows.length === 0 ? [] : [{ insert: rows }]
 }

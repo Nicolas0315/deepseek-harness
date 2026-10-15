@@ -1,4 +1,6 @@
 /** Shared profile package operations used by dsh plugin and the running manager. */
+import { diagnosticMessages } from './diagnostics.ts'
+import { resolveDiagnosticLocale, type DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import { once } from 'node:events'
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, open, rm } from 'node:fs/promises'
@@ -30,6 +32,8 @@ export interface PackageOperationContext {
 
 /** Output and cancellation policy for one pnpm operation. */
 export interface PackageOperationOptions {
+  /** Captured caller language; otherwise selected once from the operation environment. */
+  diagnosticLocale?: DiagnosticLocale
   /** The pnpm executable name or path; resolved through `PATH` like the `dsh plugin` command. Defaults to `pnpm`. */
   command?: string
   /** Prefix arguments for an application-owned executable. */
@@ -69,11 +73,12 @@ export function anchorPathSpec(argument: string, cwd: string): string {
  * @param name Installed dependency or installation-owned package name.
  * @param dir Profile directory.
  * @param anchor Installation manifest.
+ * @param locale Captured operation language; omitted, resolves the inherited environment.
  * @returns Resolved metadata, or undefined for packages without bundle metadata.
  */
-export function bundleManifest(name: string, dir: string, anchor: string): ProfileManifest | undefined {
-  const packageDir = resolveBundleDir('dsh', name, anchor, dir)
-  const manifest = readProfileManifest('dsh', packageDir)
+export function bundleManifest(name: string, dir: string, anchor: string, locale?: DiagnosticLocale): ProfileManifest | undefined {
+  const packageDir = resolveBundleDir('dsh', name, anchor, dir, locale)
+  const manifest = readProfileManifest('dsh', packageDir, locale)
   return manifest.dsh?.bundle?.patch === undefined ? undefined : manifest
 }
 
@@ -87,22 +92,25 @@ export async function saveManifest(dir: string, manifest: ProfileManifest): Prom
 
 /** Reconcile package removals and newly installed bundles without re-enabling retained dependencies. */
 async function reconcile(before: ProfileManifest, dir: string, anchor: string, options: PackageOperationOptions): Promise<void> {
-  const after = readProfileManifest('dsh', dir)
+  const locale = operationLocale(options)
+  const messages = diagnosticMessages(locale)
+  const after = readProfileManifest('dsh', dir, locale)
   const dependencies = Object.keys(after.dependencies ?? {})
   const beforeDeps = new Set(Object.keys(before.dependencies ?? {}))
   const previous = after.dsh?.profile?.bundles ?? []
   const bundles = previous.filter((name) => {
     if (!beforeDeps.has(name) && !dependencies.includes(name)) return true
-    return dependencies.includes(name) && bundleManifest(name, dir, anchor) !== undefined
+    return dependencies.includes(name) && bundleManifest(name, dir, anchor, locale) !== undefined
   })
   for (const name of dependencies) {
     if (beforeDeps.has(name)) continue
-    const metadata = bundleManifest(name, dir, anchor)
+    const metadata = bundleManifest(name, dir, anchor, locale)
     if (metadata?.dsh?.bundle === undefined) {
-      options.onOutput?.(`dsh: warning: ${name} declares no dsh.bundle — installed as a plain dependency, not a profile layer\n`, 'stderr')
+      options.onOutput?.(messages.plainDependency(name), 'stderr')
       continue
     }
-    for (const file of bundlePatchPaths(resolveBundleDir('dsh', name, anchor, dir), metadata.dsh.bundle)) loadOverlayPatches('dsh', file)
+    const packageDir = resolveBundleDir('dsh', name, anchor, dir, locale)
+    for (const file of bundlePatchPaths(packageDir, metadata.dsh.bundle, locale)) loadOverlayPatches('dsh', file, locale)
     if (!bundles.includes(name)) {
       bundles.push(name)
     }
@@ -168,7 +176,7 @@ async function namedSpecManifest(
   dir: string, spec: string, options: PackageOperationOptions, environment: Readonly<Record<string, string | undefined>>,
   flags: readonly string[],
 ): Promise<object | undefined> {
-  const parsed = parseInstallSpec(spec)
+  const parsed = parseInstallSpec(spec, options.diagnosticLocale)
   if (parsed.kind === 'path') {
     const filename = join(parsed.path, 'package.json')
     return existsSync(filename) ? JSON.parse(readFileSync(filename, 'utf8')) as object : undefined
@@ -214,7 +222,7 @@ async function recordRun(dir: string, tree: RunTree): Promise<void> {
  * @param dir Profile directory.
  * @returns The diagnostic, or undefined when no recorded run is active.
  */
-async function activeRecordedRun(dir: string): Promise<string | undefined> {
+async function activeRecordedRun(dir: string, messages: ReturnType<typeof diagnosticMessages>): Promise<string | undefined> {
   const path = runRecordPath(dir)
   const text = optionalFile(path)
   if (text === undefined) return undefined
@@ -228,15 +236,30 @@ async function activeRecordedRun(dir: string): Promise<string | undefined> {
     void error
   }
   if (tree === undefined) {
-    return `dsh: ${path} does not name a package run; delete it once no earlier package operation is still running in this profile\n`
+    return messages.invalidRunRecord(path)
   }
   await awaitTreeGone(tree)
   if (treeAlive(tree)) {
-    return `dsh: process ${String(tree.pid)}, started by an earlier package operation whose own process ended, is still running in this profile; `
-      + `wait for it or stop it, then retry. If process ${String(tree.pid)} is not that package run, delete ${path}.\n`
+    return messages.activeRun(String(tree.pid), String(tree.pid), path)
   }
   await rm(path, { force: true })
   return undefined
+}
+
+/** Select one caller-owned language without changing the child environment. */
+function operationLocale(options: PackageOperationOptions): DiagnosticLocale {
+  return options.diagnosticLocale ?? resolveDiagnosticLocale(
+    { ...process.env, ...options.env }, Intl.DateTimeFormat().resolvedOptions().locale,
+  )
+}
+
+/** Capture one operation language and resolve its profile directory before asynchronous work. */
+function prepareOperation(context: PackageOperationContext, options: PackageOperationOptions) {
+  const locale = operationLocale(options)
+  return {
+    locale, options: { ...options, diagnosticLocale: locale }, messages: diagnosticMessages(locale),
+    dir: context.dir ?? resolveProfileDir(context.profile, context.home, locale),
+  }
 }
 
 /** pnpm can install plugins through any direct-dependency field. */
@@ -246,10 +269,10 @@ function directDependencies(manifest: ProfileManifest): Record<string, string> {
 }
 
 /** Inspect only plugin rows contributed by the changed bundle, not its dependency closure. */
-function bundleComponentManifests(manifest: ProfileManifest, dir: string, anchor: string): ProfileManifest[] {
+function bundleComponentManifests(manifest: ProfileManifest, dir: string, anchor: string, locale: DiagnosticLocale): ProfileManifest[] {
   const bundle = manifest.dsh?.bundle
   if (bundle === undefined) return []
-  const patches = bundlePatchPaths(dir, bundle).flatMap(file => loadOverlayPatches('dsh', file))
+  const patches = bundlePatchPaths(dir, bundle, locale).flatMap(file => loadOverlayPatches('dsh', file, locale))
   const names = new Set<string>()
   const visit = (rows: EntryOptions[]) => {
     for (const row of rows) {
@@ -262,12 +285,12 @@ function bundleComponentManifests(manifest: ProfileManifest, dir: string, anchor
   visit(composeEntries([patches.filter(patch => patch.insert !== undefined)]))
   return [...names].flatMap((name) => {
     let packageDir: string
-    try { packageDir = resolveBundleDir('dsh', name, anchor, dir) } catch (error) {
+    try { packageDir = resolveBundleDir('dsh', name, anchor, dir, locale) } catch (error) {
       // Resolution errors for uninstalled or dynamic rows remain subject to the startup loader's checks.
       void error
       return []
     }
-    return [readProfileManifest('dsh', packageDir)]
+    return [readProfileManifest('dsh', packageDir, locale)]
   })
 }
 
@@ -285,9 +308,11 @@ function bundleComponentManifests(manifest: ProfileManifest, dir: string, anchor
 export async function runProfilePnpm(
   context: PackageOperationContext, args: readonly string[], options: PackageOperationOptions,
 ): Promise<PackageResult> {
-  const dir = context.dir ?? resolveProfileDir(context.profile, context.home)
+  const operation = prepareOperation(context, options)
+  options = operation.options
+  const { locale, messages, dir } = operation
   // Before any profile file is read: a recorded run that is still active may be rewriting them.
-  const active = await activeRecordedRun(dir)
+  const active = await activeRecordedRun(dir, messages)
   const logRoot = join(dir, '.plugin-manager', 'logs')
   await mkdir(logRoot, { recursive: true, mode: 0o700 })
   const logDir = await mkdtemp(join(logRoot, 'operation-'))
@@ -300,7 +325,7 @@ export async function runProfilePnpm(
     const bytes = Buffer.from(active)
     return { exitCode: 1, output: bytes.subarray(Math.max(0, bytes.length - options.outputBytes)).toString('utf8'), truncated: bytes.length > options.outputBytes, logPath }
   }
-  const before = readProfileManifest('dsh', dir)
+  const before = readProfileManifest('dsh', dir, locale)
   const savedFiles = ['package.json', 'pnpm-lock.yaml'].map(name => ({ path: join(dir, name), text: optionalFile(join(dir, name)) }))
   const beforeDependencies = directDependencies(before)
   const installedBefore = new Map(Object.keys(beforeDependencies).map(name => [name, optionalFile(join(dir, 'node_modules', name, 'package.json'))]))
@@ -323,7 +348,7 @@ export async function runProfilePnpm(
   /** Packages a compatibility check refused; callers render them for their own surface. */
   const incompatible: IncompatiblePlugin[] = []
   const rejected = async (warnings: readonly string[], restoration: string): Promise<PackageResult> => {
-    const diagnostic = `\ndsh: installation rejected: ${warnings.join('\n')}\ndsh: ${restoration}.\n`
+    const diagnostic = messages.installationRejected(warnings.join('\n'), restoration)
     await log.write(diagnostic)
     options.onOutput?.(diagnostic, 'stderr')
     append(Buffer.from(diagnostic))
@@ -333,7 +358,7 @@ export async function runProfilePnpm(
   // An install command names the packages it adds, so their manifests are read and checked before
   // pnpm runs: an incompatible version is never installed, and the one already in use keeps working.
   const preflight: string[] = []
-  const exemptions = readProfileVersionExemptions(dir)
+  const exemptions = readProfileVersionExemptions(dir, locale)
   // The run's own registry flags, so the lookup asks the registry the installation will use.
   const registryFlags = args.filter(argument => argument.startsWith('--registry='))
   for (const raw of namedSpecs(args)) {
@@ -342,14 +367,14 @@ export async function runProfilePnpm(
     try {
       const manifest = await namedSpecManifest(dir, anchorPathSpec(raw, context.cwd), options, environment, registryFlags)
       if (manifest === undefined) continue
-      const issue = evaluatePluginCompatibility(manifest, exemptions)
+      const issue = evaluatePluginCompatibility(manifest, exemptions, undefined, locale)
       if (issue !== undefined && !issue.exempted) {
-        preflight.push(pluginCompatibilityWarning(issue))
+        preflight.push(pluginCompatibilityWarning(issue, locale))
         incompatible.push(incompatiblePlugin(issue))
       }
     } catch (error) { void error; continue }
   }
-  if (preflight.length > 0) return await rejected(preflight, 'nothing was installed')
+  if (preflight.length > 0) return await rejected(preflight, messages.nothingInstalled)
   const cancellation = new AbortController()
   // A service run captures output, so execa terminates the tree it leads when the
   // run is killed: a lifecycle script outlives the pnpm process that started it.
@@ -438,7 +463,7 @@ export async function runProfilePnpm(
       cut = true
       child.stdout?.destroy()
       child.stderr?.destroy()
-      const notice = 'dsh: pnpm output was cut short after its process exited\n'
+      const notice = messages.pnpmOutputCut
       await log.write(notice)
       // A failure from before the cut is the run's own and replaces the notice a
       // caller would otherwise read; a rejection the cut itself causes is its end.
@@ -451,20 +476,20 @@ export async function runProfilePnpm(
     const result = completion.value
     exitCode = result.exitCode ?? (result.code === 'ENOENT' ? 127 : 1)
     if (control.stalled) {
-      const notice = `dsh: pnpm printed nothing for ${String(options.idleTimeoutMs)}ms and was terminated\n`
+      const notice = messages.pnpmStalled(String(options.idleTimeoutMs))
       await log.write(notice)
       options.onOutput?.(notice, 'stderr')
       append(Buffer.from(notice))
     }
     if (result.failed && output.length === 0) {
-      const diagnostic = result.shortMessage ?? 'pnpm failed'
+      const diagnostic = result.shortMessage ?? messages.pnpmFailed
       await log.write(diagnostic)
       truncated = Buffer.byteLength(diagnostic) > options.outputBytes
       output = Buffer.from(diagnostic).subarray(0, options.outputBytes)
     }
     // A terminated run's exit status says nothing about what it wrote, so it never reconciles the selection.
     if (exitCode === 0 && !control.stalled) {
-      const after = readProfileManifest('dsh', dir)
+      const after = readProfileManifest('dsh', dir, locale)
       const warnings: string[] = []
       for (const [name, spec] of Object.entries(directDependencies(after))) {
         const packageDir = join(dir, 'node_modules', name)
@@ -475,16 +500,16 @@ export async function runProfilePnpm(
         const found: string[] = []
         const issues: IncompatiblePlugin[] = []
         try {
-          const manifest = readProfileManifest('dsh', packageDir)
-          for (const candidate of [manifest, ...bundleComponentManifests(manifest, packageDir, context.installAnchor)]) {
-            const issue = evaluatePluginCompatibility(candidate, readProfileVersionExemptions(dir))
+          const manifest = readProfileManifest('dsh', packageDir, locale)
+          for (const candidate of [manifest, ...bundleComponentManifests(manifest, packageDir, context.installAnchor, locale)]) {
+            const issue = evaluatePluginCompatibility(candidate, readProfileVersionExemptions(dir, locale), undefined, locale)
             if (issue !== undefined && !issue.exempted) {
-              found.push(pluginCompatibilityWarning(issue))
+              found.push(pluginCompatibilityWarning(issue, locale))
               issues.push(incompatiblePlugin(issue))
             }
           }
         } catch (error) {
-          found.push(`Cannot validate installed package ${name}: ${String(error)}`)
+          found.push(messages.validateInstalledFailed(name, String(error)))
         }
         if (found.length === 0) continue
         if (!untouched) {
@@ -492,7 +517,7 @@ export async function runProfilePnpm(
           incompatible.push(...issues)
         }
         else {
-          const notice = `\ndsh: warning: ${found.join('\n')}\ndsh: it stays installed but profile startup denies it until you grant an exemption for those exact versions.\n`
+          const notice = messages.installedButDenied(found.join('\n'))
           await log.write(notice)
           options.onOutput?.(notice, 'stderr')
         }
@@ -513,9 +538,9 @@ export async function runProfilePnpm(
         const repaired = await repairing
         exitCode = 1
         const restoration = repaired.exitCode === 0
-          ? 'restored package.json, pnpm-lock.yaml, and node_modules'
-          : "restored package.json and pnpm-lock.yaml, but node_modules could not be reinstalled; run 'dsh plugin install'"
-        const diagnostic = `\ndsh: installation rejected: ${warnings.join('\n')}\ndsh: ${restoration}.\n`
+          ? messages.restoredInstallation
+          : messages.restoreIncomplete
+        const diagnostic = messages.installationRejected(warnings.join('\n'), restoration)
         await log.write(diagnostic)
         options.onOutput?.(diagnostic, 'stderr')
         append(Buffer.from(diagnostic))
@@ -545,13 +570,15 @@ export async function runProfilePnpm(
 export async function runPluginCommand(
   context: PackageOperationContext, args: readonly string[], options: PackageOperationOptions,
 ): Promise<PackageResult> {
-  const dir = context.dir ?? resolveProfileDir(context.profile, context.home)
+  const operation = prepareOperation(context, options)
+  options = operation.options
+  const { messages, dir } = operation
   await mkdir(dir, { recursive: true })
   return withFileLock(join(dir, 'package.json'), async () => {
     if (!existsSync(join(dir, 'package.json'))) {
       const template = PROFILE_TEMPLATES[context.profile]
       initProfile(dir, template?.bundles ?? DEFAULT_PROFILE_BUNDLES)
-      options.onOutput?.(`dsh: initialized profile ${context.profile} at ${dir}\n`, 'stderr')
+      options.onOutput?.(messages.profileInitialized(context.profile, dir), 'stderr')
     }
     return runProfilePnpm(context, args, options)
   }, options.lockWaitMs === undefined ? undefined : { waitMs: options.lockWaitMs })

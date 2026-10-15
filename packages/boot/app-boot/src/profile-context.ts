@@ -1,5 +1,7 @@
 /** Launcher-owned profile locations and composition inputs. */
 import { join } from 'node:path'
+import { defaultDiagnosticLocale } from './diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import { composeEntries, loadProfileDirectory, PROFILE_PATCH_FILENAME, type Profile } from './profile.ts'
 import { loadOptionalPatches } from './index.ts'
 import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
@@ -58,10 +60,13 @@ export function resolveTelemetryPatch(disabledEnv: string | undefined, hasRow: b
  * @param binName Diagnostic prefix for malformed or missing configuration.
  * @param context Data supplied by the profile launcher.
  * @param initialProfile Already loaded startup profile; omitted reads the current files.
+ * @param locale Diagnostic language captured for this operation.
  * @returns Bundle patches in application order.
  */
-export function readBundlePatches(binName: string, context: ProfileContext, initialProfile?: Profile): PatchOptions[] {
-  const profile = initialProfile ?? loadProfileDirectory(binName, context.dir, context.installAnchor, { userLayer: false })
+export function readBundlePatches(
+  binName: string, context: ProfileContext, initialProfile?: Profile, locale: DiagnosticLocale = defaultDiagnosticLocale(),
+): PatchOptions[] {
+  const profile = initialProfile ?? loadProfileDirectory(binName, context.dir, context.installAnchor, { userLayer: false }, locale)
   return profile.layers.flatMap(layer => layer.patches)
 }
 
@@ -69,13 +74,19 @@ export function readBundlePatches(binName: string, context: ProfileContext, init
  * @param binName Diagnostic prefix for malformed or missing configuration.
  * @param context Data supplied by the profile launcher.
  * @param initialProfile Already loaded startup profile; omitted reads the current files.
+ * @param locale - diagnostic language captured for this operation.
  * @returns Detached ordered patches; this function does not update the Loader.
  */
-export function readProfilePatches(binName: string, context: ProfileContext, initialProfile?: Profile): PatchOptions[] {
+export function readProfilePatches(
+  binName: string,
+  context: ProfileContext,
+  initialProfile?: Profile,
+  locale: DiagnosticLocale = defaultDiagnosticLocale(),
+): PatchOptions[] {
   const patches = structuredClone([
-    ...readBundlePatches(binName, context, initialProfile),
-    ...(initialProfile?.patches ?? loadOptionalPatches(binName, context.patchPath) ?? []),
-    ...(loadOptionalPatches(binName, join(context.home, PROFILE_PATCH_FILENAME)) ?? []),
+    ...readBundlePatches(binName, context, initialProfile, locale),
+    ...(initialProfile?.patches ?? loadOptionalPatches(binName, context.patchPath, locale) ?? []),
+    ...(loadOptionalPatches(binName, join(context.home, PROFILE_PATCH_FILENAME), locale) ?? []),
     ...context.overlays,
   ])
   const telemetryPatch = resolveTelemetryPatch(context.telemetryDisabledEnv,

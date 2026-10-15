@@ -35,6 +35,7 @@ kind: "package-group"
 | [`home-paths/`](home-paths/README.zh.md) | 解析统一的 Harness 主目录并拼接共享的用户数据路径 |
 | [`http-proxy/`](http-proxy/README.zh.md) | 解析出唯一的出站代理策略，并为 `fetch`、SDK agent（智能体）与 spawn 的子进程安装它 |
 | [`launch-environment/`](launch-environment/README.zh.md) | 冻结的启动环境，记住每个值来自哪一层 |
+| [`diagnostic-locale/`](diagnostic-locale/README.zh.md) | 从显式环境和系统语言选择 CLI 与 SDK 诊断语言 |
 | [`atomic-write/`](atomic-write/README.zh.md) | 原子文件替换与跨进程写锁 |
 | [`lazy-require/`](lazy-require/README.zh.md) | 在首次使用时按调用方位置加载兼容 CommonJS 的 Host 依赖 |
 | [`native-command/`](native-command/README.zh.md) | 直接运行宿主原生命令，绝不拼 shell 字符串 |

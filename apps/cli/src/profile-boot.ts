@@ -10,6 +10,7 @@
  * @module @deepseek-ai/dsh/profile-boot
  */
 
+import { diagnosticMessages } from './diagnostics.ts'
 import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -110,6 +111,7 @@ export function initializeProfileFromDefault(
   fromDefaultProfile: string,
   home: string = resolveDshHome(),
 ): void {
+  const messages = diagnosticMessages()
   const dir = resolveProfileDir(name, home)
   const template = Object.hasOwn(PROFILE_TEMPLATES, fromDefaultProfile)
     ? PROFILE_TEMPLATES[fromDefaultProfile]
@@ -117,15 +119,14 @@ export function initializeProfileFromDefault(
   if (template === undefined) {
     const expected = Object.keys(PROFILE_TEMPLATES).sort().map(value => JSON.stringify(value)).join(', ')
     throw new Error(
-      `${NAME}: unknown default profile ${JSON.stringify(fromDefaultProfile)}; expected one of ${expected}`,
+      messages.unknownDefaultProfileExpectedOneOf(NAME, JSON.stringify(fromDefaultProfile), expected),
     )
   }
   // Case-insensitive file systems resolve a case variant such as `Web` to the shipped directory.
   const shipped = Object.keys(PROFILE_TEMPLATES).find(shippedName => shippedName.toLowerCase() === name.toLowerCase())
   if (shipped !== undefined) {
     throw new Error(
-      `${NAME}: profile ${JSON.stringify(name)} names shipped profile ${JSON.stringify(shipped)} and cannot be a custom profile target; `
-      + 'omit --from-default-profile to use it',
+      messages.profileNamesShippedAndCannotBeCustom(NAME, JSON.stringify(name), JSON.stringify(shipped)),
     )
   }
   mkdirSync(dirname(dir), { recursive: true })
@@ -149,7 +150,7 @@ export function initializeProfileFromDefault(
       if (existsSync(dir)) {
         // The concurrent replacement supersedes the previous profile.
         rmSync(previous, { recursive: true, force: true })
-        throw new Error(`${NAME}: profile ${JSON.stringify(name)} was recreated concurrently at ${dir}`, { cause: error })
+        throw new Error(messages.profileRecreatedConcurrently(NAME, JSON.stringify(name), dir), { cause: error })
       }
       if (moved) {
         try {
@@ -157,7 +158,7 @@ export function initializeProfileFromDefault(
         } catch (restoreError) {
           throw new AggregateError(
             [error, restoreError],
-            `${NAME}: profile replacement failed and ${dir} could not be restored from ${previous}`,
+            messages.profileReplacementRestoreFailed(NAME, dir, previous),
           )
         }
       }
@@ -172,7 +173,7 @@ export function initializeProfileFromDefault(
     rmSync(staging, { recursive: true, force: true })
   } catch (error) {
     // The replacement is complete; leftover files only occupy space.
-    process.stderr.write(`${NAME}: replaced profile ${JSON.stringify(name)} but could not remove ${staging}: ${String(error)}\n`)
+    process.stderr.write(messages.profileReplacementCleanupFailed(NAME, JSON.stringify(name), staging, String(error)))
   }
 }
 
@@ -269,6 +270,7 @@ export interface RunProfileOptions {
  * @throws after disposing startup resources; cleanup failures retain the original error.
  */
 export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Context; shutdown: ProcessShutdown }> {
+  const messages = diagnosticMessages()
   // Before the first plugin mounts and before anything can issue a request: Node's fetch ignores the
   // proxy environment on its own, so every profile would otherwise connect directly. Resolving from
   // the launcher's snapshot — not `process.env` — is what lets a proxy declared in a `.env` layer
@@ -286,7 +288,7 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
       try { await release() } catch (error) { failures.push(error) }
     }
     if (failures.length === 1) throw failures[0]
-    if (failures.length > 1) throw new AggregateError(failures, 'dsh: profile cleanup failed')
+    if (failures.length > 1) throw new AggregateError(failures, messages.dshProfileCleanupFailed)
   })()
   try {
     const composed = await composeProfile(
@@ -346,7 +348,7 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
     return { ctx, shutdown }
   } catch (error) {
     try { await dispose() } catch (cleanupError) {
-      throw new AggregateError([error, cleanupError], 'dsh: profile startup and cleanup failed')
+      throw new AggregateError([error, cleanupError], messages.dshProfileStartupAndCleanupFailed)
     }
     throw error
   }

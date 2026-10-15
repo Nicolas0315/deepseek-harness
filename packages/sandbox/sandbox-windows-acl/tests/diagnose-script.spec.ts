@@ -25,6 +25,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
+import { aclFixtureCommand } from './windows-acl-fixture.ts'
 
 const isWin32 = process.platform === 'win32'
 
@@ -68,19 +69,20 @@ interface ScriptReport {
 function reports(run: ScriptRun): ScriptReport[] {
   const result = run.output.split(/\r?\n/u).filter(line => line.startsWith('REPORT '))
     .map(line => JSON.parse(line.slice('REPORT '.length)) as ScriptReport)
-  expect(result.length).toBeGreaterThan(0)
+  expect(result.length, run.output).toBeGreaterThan(0)
   for (const entry of result) expect(entry.reason.length).toBeGreaterThan(0)
   expect(result.at(-1)).toMatchObject({ kind: 'summary', details: { exitCode: run.code } })
   return result
 }
 
 function pwsh(command: string): string {
-  return execFileSync('pwsh', ['/NoLogo', '/NonInteractive', '/NoProfile', '-Command', command], { encoding: 'utf8', timeout, windowsHide: true })
+  return execFileSync('pwsh', ['/NoLogo', '/NonInteractive', '/NoProfile', '-Command', aclFixtureCommand(command)], { encoding: 'utf8', timeout, windowsHide: true })
 }
 
 function runPowerShell(args: readonly string[], env?: NodeJS.ProcessEnv): ScriptRun {
   try {
-    const stdout = execFileSync('pwsh', ['/NoLogo', '/NonInteractive', '/NoProfile', ...args], {
+    const command = args[0] === '-Command' ? args[1]! : `& ${args.slice(1).map(value => /^-[A-Za-z][A-Za-z0-9]*$/u.test(value) ? value : quote(value)).join(' ')}; if (-not $?) { if ($LASTEXITCODE) { exit $LASTEXITCODE }; exit 1 }; exit $LASTEXITCODE`
+    const stdout = execFileSync('pwsh', ['/NoLogo', '/NonInteractive', '/NoProfile', '-Command', aclFixtureCommand(command)], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout,
@@ -142,6 +144,14 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     const dir = join(root, name)
     mkdirSync(dir, { recursive: true })
     return dir
+  }
+
+  function withholdWriteOwner(path: string): void {
+    const result = pwsh(`
+[DshAclFixture]::SetDacl(${quote(path)}, 'D:P(A;;0x1701bf;;;${meSid})', $true)
+if (-not [DshAclFixture]::HasAccess(${quote(path)}, 0x40000) -or [DshAclFixture]::HasAccess(${quote(path)}, 0x80000)) { throw 'Fixture must allow WRITE_DAC and deny WRITE_OWNER' }
+`)
+    expect(result.trim()).toBe('')
   }
 
   function stamp(path: string, sid: string, type: 'grant' | 'deny' = 'grant'): void {
@@ -241,14 +251,14 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     }
   }, timeout)
 
-  it('grants full control to a directory that lacks WRITE_DAC and WRITE_OWNER, preserving owner and label', () => {
+  it('grants full control to a directory that lacks WRITE_OWNER, preserving owner and label', () => {
     const scratch = newScratch()
     try {
       const target = makeDir(scratch, 'missing-write-owner')
       icacls(target, '/setintegritylevel', 'L')
       const labelsBefore = integrityLines(target)
       expect(labelsBefore.length).toBeGreaterThan(0)
-      icacls(target, '/inheritance:r', '/grant:r', `*${meSid}:(M)`)
+      withholdWriteOwner(target)
       const ownerBefore = ownerOf(target)
 
       const run = runScript(['-Path', target, '-AllowRoot', scratch, '-Out', join(scratch, 'out')])
@@ -272,7 +282,7 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     const scratch = newScratch()
     try {
       const target = makeDir(scratch, 'both')
-      icacls(target, '/inheritance:r', '/grant:r', `*${meSid}:(M)`)
+      withholdWriteOwner(target)
       stamp(target, PACKAGE_SID)
       const ownerBefore = ownerOf(target)
 
@@ -341,11 +351,14 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
       // The sandbox reports its provisioning failure on the workspace root while the
       // conflicting entry sits deeper, so one approved call must clear both.
       const root = makeDir(scratch, 'workspace')
-      icacls(root, '/inheritance:r', '/grant:r', '*S-1-5-11:(M)')
       const deep = makeDir(root, 'deep')
       const leaf = makeDir(deep, 'leaf')
-      icacls(deep, '/inheritance:r', '/grant:r', `*${PACKAGE_SID}:(OI)(CI)(RX)`)
-      icacls(leaf, '/inheritance:r', '/grant:r', `*${OTHER_PACKAGE_SID}:(OI)(CI)(RX)`)
+      // Children retain explicit caller access when the root's inherited grants disappear.
+      for (const child of [deep, leaf])
+        pwsh(`[DshAclFixture]::SetDacl(${quote(child)}, 'D:P(A;;FA;;;${meSid})', $true)`)
+      withholdWriteOwner(root)
+      icacls(deep, '/grant', `*${PACKAGE_SID}:(OI)(CI)(RX)`)
+      icacls(leaf, '/grant', `*${OTHER_PACKAGE_SID}:(OI)(CI)(RX)`)
 
       const run = runScript(['-Path', root, '-AllowRoot', root, '-Out', join(scratch, 'out')])
       expect(run.code, run.output).toBe(0)
@@ -378,16 +391,16 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     const scratch = newScratch()
     try {
       const target = makeDir(scratch, 'inherit-only')
-      icacls(target, '/inheritance:r', '/grant:r', '*S-1-5-11:(M)')
+      withholdWriteOwner(target)
       icacls(target, '/grant', '*S-1-5-32-545:(OI)(CI)(IO)(F)')
-      const inheritOnlyBefore = aclLines(target).filter(line => line.includes('(IO)'))
+      const inheritOnlyBefore = normalized(target, aclLines(target)).filter(line => line.includes('(IO)'))
       expect(inheritOnlyBefore).toHaveLength(1)
 
       const run = runScript(['-Path', target, '-AllowRoot', scratch, '-Out', join(scratch, 'out')])
       expect(run.code, run.output).toBe(0)
       expect(run.output).toContain(`GRANTED ${target} SID=${meSid}`)
       expect(reports(run)).toContainEqual(containingObject({ kind: 'verification', operation: 'grant', path: target, status: 'verified' }))
-      expect(aclLines(target).filter(line => line.includes('(IO)'))).toEqual(inheritOnlyBefore)
+      expect(normalized(target, aclLines(target)).filter(line => line.includes('(IO)'))).toEqual(inheritOnlyBefore)
       expect(aclLines(target).join('\n')).toMatch(/\(F\)/u)
     } finally {
       dispose(scratch)
@@ -566,7 +579,7 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     try {
       const out = join(scratch, 'out')
       const first = makeDir(scratch, 'multi-first')
-      icacls(first, '/inheritance:r', '/grant:r', `*${meSid}:(M)`)
+      withholdWriteOwner(first)
       const second = makeDir(scratch, 'multi-second')
       stamp(second, PACKAGE_SID)
       icacls(second, '/deny', `*${meSid}:(WO)`)
@@ -588,7 +601,7 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     try {
       const out = join(scratch, 'out')
       const first = makeDir(scratch, 'pending-first')
-      icacls(first, '/inheritance:r', '/grant:r', `*${meSid}:(M)`)
+      withholdWriteOwner(first)
       const second = makeDir(scratch, 'pending-second')
       stamp(second, PACKAGE_SID)
       icacls(second, '/deny', `*${meSid}:(WO)`)
@@ -714,7 +727,7 @@ exit $LASTEXITCODE
     const scratch = newScratch()
     try {
       const target = makeDir(scratch, 'backup-failure')
-      icacls(target, '/inheritance:r', '/grant:r', `*${meSid}:(M)`)
+      withholdWriteOwner(target)
       const outputFile = join(scratch, 'not-a-directory')
       writeFileSync(outputFile, 'Existing contents')
       const before = sddlOf(target)
@@ -806,7 +819,7 @@ function icacls { throw [System.IO.IOException]::new('icacls unavailable') }
     try {
       const out = join(scratch, 'out')
       const grantRoot = makeDir(scratch, 'self-grant')
-      icacls(grantRoot, '/inheritance:r', '/grant:r', `*${meSid}:(M)`)
+      withholdWriteOwner(grantRoot)
       const grantRun = runScript(['-Path', grantRoot, '-AllowRoot', grantRoot, '-Out', out])
       expect(grantRun.code, grantRun.output).toBe(0)
       expect(grantRun.output).toContain(`GRANTED ${grantRoot} SID=${meSid}`)
@@ -827,7 +840,7 @@ function icacls { throw [System.IO.IOException]::new('icacls unavailable') }
     const scratch = newScratch()
     try {
       const target = makeDir(scratch, 'idempotent')
-      icacls(target, '/inheritance:r', '/grant:r', `*${meSid}:(M)`)
+      withholdWriteOwner(target)
       stamp(target, PACKAGE_SID)
       const out = join(scratch, 'out')
 

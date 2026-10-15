@@ -11,10 +11,11 @@ import {
   acknowledgeReloadConnectionLoss, captureExpandedTurnProcessAria, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, expandOwningTurnProcess, newEnglishPage, saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, expandOwningTurnProcess, newEnglishPage, openSettings, saveFailureShot } from './support.ts'
 
 const FIXTURE = fileURLToPath(new URL('../../../snapshots/web/ptc-round/session.v3.jsonl', import.meta.url))
 const UI_EXPECTED = fileURLToPath(new URL('../../../snapshots/web/ptc-round/ui.expected.md', import.meta.url))
+const JAPANESE_EXPECTED = fileURLToPath(new URL('../../../snapshots/web/ptc-round/japanese.expected.md', import.meta.url))
 const TRAJECTORY_EXPECTED = fileURLToPath(new URL('../../../snapshots/web/ptc-round/trajectory.expected.md', import.meta.url))
 const CODE_EXPECTED = fileURLToPath(new URL('../../../snapshots/web/ptc-round/code.expected.md', import.meta.url))
 const PREPARING_EXPECTED = fileURLToPath(new URL('../../../snapshots/web/ptc-round/preparing.expected.md', import.meta.url))
@@ -273,6 +274,20 @@ describe('web e2e: PTC mode round renders nested sub-calls', () => {
     expect(await source.textContent()).toBe(args.code.endsWith('\n') ? args.code.slice(0, -1) : args.code)
     await page.getByRole('tab', { name: 'Summary', exact: true }).click()
     expect(await wrap.getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it.skipIf(MODE === 'record')('renders the recorded session in Japanese after a live language switch', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-ptc-japanese'))
+    await openSettings(page, 'en')
+    const dialog = page.getByRole('dialog', { name: 'Settings', exact: true })
+    await dialog.getByRole('button', { name: 'English', exact: true }).click()
+    await page.getByRole('menuitem', { name: '日本語', exact: true }).click()
+    await page.getByRole('dialog', { name: '設定', exact: true })
+      .getByRole('button', { name: '閉じる', exact: true }).click()
+    await page.getByRole('tab', { name: 'チャット', exact: true }).click()
+    expect(await page.evaluate(() => document.documentElement.lang)).toBe('ja')
+    const snapshot = await captureExpandedTurnProcessAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
+    await compareOrRefreshGolden(JAPANESE_EXPECTED, snapshot, MODE)
   })
 
   it.skipIf(MODE === 'record')('stayed clean: no page errors, no reconnect churn', () => {

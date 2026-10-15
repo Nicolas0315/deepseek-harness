@@ -121,7 +121,7 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
     return opened
   }
 
-  async function snapshot(name: string): Promise<void> {
+  async function snapshot(name: string, illustration: 'images' | 'localized-preview' = 'images'): Promise<void> {
     await expect.poll(() => page.locator('[data-desktop-onboarding]').getAttribute('aria-busy')).toBe('false')
     const hasIllustration = name.startsWith('welcome') || name.startsWith('credit')
     if (hasIllustration) {
@@ -131,7 +131,10 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
           await image.decode()
           return image.naturalWidth > 0 && image.naturalHeight > 0
         })))
-      expect(decoded).toEqual([true, true])
+      expect(decoded).toEqual(illustration === 'images' ? [true, true] : [])
+      if (illustration === 'localized-preview') {
+        expect(await page.locator('[data-desktop-onboarding] [class*="preview"][aria-hidden="true"]').count()).toBe(1)
+      }
     }
     const aria = await captureStableAria(page, '[data-desktop-onboarding]', scaffold.workspaceCwd)
     await mkdir(EXPECTED, { recursive: true })
@@ -204,7 +207,7 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
         expect(action?.width).toBeCloseTo(240, 0)
         expect(action!.y - (card!.y + card!.height)).toBeCloseTo(40, 0)
       }
-      if (hasIllustration) {
+      if (hasIllustration && illustration === 'images') {
         const illustrations = await page.locator('[class*="illustration"] > img:visible').evaluateAll(elements => elements.map((element) => {
           const image = element as HTMLImageElement
           const box = image.getBoundingClientRect()
@@ -220,6 +223,13 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
           expect(illustration.ratio).toBeCloseTo(illustration.exportedRatio, 2)
         }
 
+      }
+      if (hasIllustration && illustration === 'localized-preview') {
+        const box = await page.locator('[data-desktop-onboarding] [class*="preview"][aria-hidden="true"]').boundingBox()
+        expect(box).not.toBeNull()
+        expect(box!.width).toBeGreaterThan(0)
+        expect(box!.height).toBeGreaterThan(0)
+        expect(box!.width / box!.height).toBeCloseTo(name.startsWith('welcome') ? 3993 / 2480 : 594 / 509, 2)
       }
       if (screenshots !== undefined) await page.screenshot({ path: join(screenshots, `${name}-${viewport.width}x${viewport.height}.png`) })
     }
@@ -432,6 +442,38 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
     await page.getByRole('radiogroup').waitFor()
     await snapshot('process-en-dark')
     await page.close()
+  })
+
+  it.each(['light', 'dark'] as const)('localizes the Japanese welcome and credit previews in %s mode', async (theme) => {
+    await scaffold.ctx.settings.mutate('ui-theme', [{ op: 'set', path: ['preference'], value: theme }])
+    page = await desktopPage('ja-JP')
+    tripwire = watchConsole(page)
+    onTestFailed(() => saveFailureShot(page, `desktop-onboarding-ja-${theme}`))
+    const response = page.waitForResponse('**/api/account/getBalance')
+    await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
+    await (await response).finished()
+    await page.getByRole('button', { name: 'セットアップを開始', exact: true }).waitFor()
+    const preview = page.locator('[data-desktop-onboarding] [class*="preview"]')
+    expect(await preview.count()).toBe(1)
+    expect(await preview.getAttribute('aria-hidden')).toBe('true')
+    expect(await preview.locator('img, button, input, select, textarea, a, [tabindex]').count()).toBe(0)
+    await preview.getByText('新しいセッション', { exact: true }).waitFor()
+    await preview.getByText('既定のワークスペース', { exact: true }).waitFor()
+    await preview.getByText('四半期データを集計', { exact: true }).waitFor()
+    await preview.getByText('作りたいものを説明してください', { exact: true }).waitFor()
+    await snapshot(`welcome-ja-${theme}`, 'localized-preview')
+    await page.getByRole('button', { name: 'セットアップを開始', exact: true }).click()
+    await page.getByRole('heading', { name: 'クレジットを追加', exact: true }).waitFor()
+    expect(await preview.count()).toBe(1)
+    expect(await preview.getAttribute('aria-hidden')).toBe('true')
+    expect(await preview.locator('img, button, input, select, textarea, a, [tabindex]').count()).toBe(0)
+    await preview.getByText('設定', { exact: true }).waitFor()
+    await preview.getByText('アカウント', { exact: true }).waitFor()
+    await preview.getByText('チャージ残高', { exact: true }).waitFor()
+    await preview.getByText('使用量を表示', { exact: true }).waitFor()
+    await preview.getByText('チャージ', { exact: true }).waitFor()
+    await snapshot(`credit-ja-${theme}`, 'localized-preview')
+    expect(tripwire.pageErrors).toEqual([])
   })
 
   it('leaves a bonus unacknowledged on onboarding exit and presents it only in the workspace', async () => {

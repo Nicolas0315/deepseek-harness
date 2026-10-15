@@ -1,4 +1,6 @@
 /** Approve pnpm's pending dependency scripts in the current profile's workspace settings. */
+import { diagnosticMessages } from './diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isAlias, isMap, isNode, isScalar, parseDocument, visit } from 'yaml'
@@ -11,7 +13,8 @@ const UNDECIDED_BUILD = 'set this to true or false'
 /** Where a non-interactive run names the build scripts it skipped. */
 const IGNORED_BUILDS = /\bIgnored build scripts: (.+)/
 
-async function readPolicy(dir: string) {
+async function readPolicy(dir: string, locale?: DiagnosticLocale) {
+  const messages = diagnosticMessages(locale)
   let text: string
   try { text = await readFile(join(dir, 'pnpm-workspace.yaml'), 'utf8') }
   catch (error) {
@@ -20,12 +23,12 @@ async function readPolicy(dir: string) {
   }
   const document = parseDocument(text)
   if (document.errors[0] !== undefined) throw document.errors[0]
-  if (!isMap(document.contents)) throw new Error('pnpm-workspace.yaml must be a YAML mapping')
+  if (!isMap(document.contents)) throw new Error(messages.pnpmWorkspaceYamlMustBeAYAMLMapping)
   const builds = document.get('allowBuilds')
-  if (builds !== undefined && !isMap(builds)) throw new Error('allowBuilds must be a YAML mapping')
+  if (builds !== undefined && !isMap(builds)) throw new Error(messages.allowbuildsMustBeAYAMLMapping)
   visit(builds ?? null, (_key, node) => {
     if (isAlias(node) || (isNode(node) && 'anchor' in node && node.anchor)) {
-      throw new Error('allowBuilds must not contain YAML anchors or aliases')
+      throw new Error(messages.allowbuildsMustNotContainYAMLAnchorsOrAliases)
     }
   })
   const keys = isMap(builds) ? builds.items.flatMap(({ key }) =>
@@ -44,10 +47,11 @@ async function readPolicy(dir: string) {
  * record that survives.
  * @param dir Current profile directory.
  * @param output Captured output of the failed run.
+ * @param locale Captured operation language; omitted, resolves the inherited environment.
  * @returns Exact package names awaiting a build decision; wildcard rules are excluded.
  */
-export async function recordPendingBuilds(dir: string, output: string): Promise<string[]> {
-  const { document, pending, keys } = await readPolicy(dir)
+export async function recordPendingBuilds(dir: string, output: string, locale?: DiagnosticLocale): Promise<string[]> {
+  const { document, pending, keys } = await readPolicy(dir, locale)
   const known = new Set(keys)
   const added = ignoredBuildNames(output).filter(name => !known.has(name))
   if (added.length === 0) return pending
@@ -70,10 +74,11 @@ export function ignoredBuildNames(output: string): string[] {
 /** Persist approval without running scripts; the caller holds the profile manifest lock.
  * @param dir Current profile directory.
  * @param names Explicit package names from the pending build list.
+ * @param locale Captured operation language; omitted, resolves the inherited environment.
  * @throws If a name is no longer pending or allowBuilds contains YAML anchors or aliases; no approvals are written.
  */
-export async function approveBuilds(dir: string, names: readonly string[]): Promise<void> {
-  const { document, pending } = await readPolicy(dir)
+export async function approveBuilds(dir: string, names: readonly string[], locale?: DiagnosticLocale): Promise<void> {
+  const { document, pending } = await readPolicy(dir, locale)
   if (names.some(name => !pending.includes(name))) throw new ManagementFailure('stale-approval')
   if (names.length === 0) return
   for (const name of names) document.setIn(['allowBuilds', name], true)

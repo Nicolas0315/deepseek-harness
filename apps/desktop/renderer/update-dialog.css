@@ -29,3 +29,7 @@ body.update-dialog { opacity: 0; transition: opacity 150ms ease; }
 body.update-dialog.visible { opacity: 1; }
 @starting-style { body.update-dialog.visible { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { body.update-dialog { transition: none; } }
+
+:root:lang(ja) {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif;
+}

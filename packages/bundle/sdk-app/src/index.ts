@@ -5,10 +5,11 @@
  * @module @deepseek-ai/dsh-sdk-app
  */
 
+import { diagnosticMessages } from './diagnostics.ts'
 import { Command } from 'commander'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { exitOnStdinEnd, parseCmdline } from '@deepseek-ai/dsh-cmdline'
+import { exitOnStdinEnd, parseCmdline, resolveCommandLocale } from '@deepseek-ai/dsh-cmdline'
 
 /** Stable Cordis plugin name. */
 export const name = 'sdk-app-startup'
@@ -35,15 +36,12 @@ export const Config: z<Config> = z.object({
  * @param profile - selected profile name rendered in the command grammar.
  * @returns a fresh program for one invocation.
  */
-function sdkCommand(profile: string): Command {
+function sdkCommand(profile: string, messages: ReturnType<typeof diagnosticMessages>): Command {
   return new Command()
     .name(`dsh --profile ${profile}`)
-    .description('Serve DeepSeek Harness SDK clients over stdio JSON-RPC.')
-    .helpOption('-h, --help', 'show this help')
-    .addHelpText('after', `
-Example:
-  dsh --profile ${profile}     serve one SDK runtime until its client disconnects
-`)
+    .description(messages.serveDeepSeekHarnessSDKClientsOverStdioJSONRPC)
+    .helpOption('-h, --help', messages.showThisHelp)
+    .addHelpText('after', messages.exampleDshProfileServeOneSDKRuntimeUntilIts(profile))
 }
 
 /**
@@ -53,7 +51,8 @@ Example:
  * @param config - selected profile identity for command help.
  */
 export function apply(ctx: Context, config: Config = {}): void {
-  const program = sdkCommand(config.profile ?? 'sdk')
+  const messages = diagnosticMessages(resolveCommandLocale(ctx))
+  const program = sdkCommand(config.profile ?? 'sdk', messages)
   program.action(() => {
     exitOnStdinEnd(ctx, 'sdk-app.stdin')
     ctx.provide(SDK_APP_STARTUP_SERVICE, { accepted: true })

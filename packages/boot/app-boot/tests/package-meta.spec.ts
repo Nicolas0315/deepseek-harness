@@ -592,3 +592,15 @@ describe('plugin display metadata with read-only resolver stacks', () => {
     expect(readPluginMeta('plain', profileURL)?.error).toContain('Invalid "exports" target')
   })
 })
+
+it('passes an explicit language through nested dictionary fields and retains raw JSON syntax errors', () => {
+  dictionary('en', { meta: { title: 'English title' } })
+  dictionary('ja', { meta: { title: false } })
+  const filename = fs.realpathSync(join(dir, 'locale', 'ja.json'))
+  expect(readPluginMeta('localized', parentURL, 'ja')?.error)
+    .toBe(`localized のプラグインメタデータ: Error: ${filename}: meta.title は空でない文字列にしてください`)
+  file(filename, '{')
+  let raw = ''
+  try { JSON.parse('{') } catch (error) { raw = String(error) }
+  expect(readPluginMeta('localized', parentURL, 'ja')?.error).toBe(`localized のプラグインメタデータ: Error: ${filename}: ${raw}`)
+})

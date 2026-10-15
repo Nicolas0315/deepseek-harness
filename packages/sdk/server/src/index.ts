@@ -14,6 +14,7 @@ import type { Readable, Writable } from 'node:stream'
 import Schema from '@deepseek-ai/schemastery'
 import { JsonRpcLineTransport } from '@deepseek-ai/dsh-sdk-protocol'
 import { HarnessSdkJsonRpcServer } from './server.ts'
+import type {} from '@deepseek-ai/dsh-cmdline'
 
 export * from './server.ts'
 
@@ -38,7 +39,9 @@ export const Config: Schema<JsonRpcConfig> = Schema.object({
 
 /**
  * Serve SDK requests over the configured streams. Effect disposal shuts down
- * SDK-created agents and closes the transport. A `shutdown` response is flushed
+ * SDK-created agents and closes the transport. A launcher-provided `appReady`
+ * defers stdin consumption until successful startup is committed; contexts
+ * without it start immediately. A `shutdown` response is flushed
  * before the root runtime is disposed and the process exits 0; the app bin
  * owns root-context disposal for EOF and signals.
  */
@@ -92,8 +95,11 @@ export function apply(ctx: Context, config: JsonRpcConfig): void {
   })
 
   ctx.effect(() => {
-    transport.start()
+    const ready = ctx.get('appReady')
+    const cancelReady = ready?.onReady(() => { transport.start() })
+    if (ready === undefined) transport.start()
     return async () => {
+      cancelReady?.()
       await server.shutdown()
       transport.close()
     }

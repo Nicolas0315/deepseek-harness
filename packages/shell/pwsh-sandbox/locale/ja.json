@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "PowerShellのサンドボックス実行",
+    "description": "現在のサンドボックス権限の範囲内でPowerShellコマンドを実行します。"
+  }
+}

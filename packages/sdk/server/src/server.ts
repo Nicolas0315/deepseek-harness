@@ -5,6 +5,8 @@
  * @module @deepseek-ai/dsh-sdk-jsonrpc-server/server
  */
 
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
+import { diagnostics, defaultDiagnosticLocale } from './diagnostics.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import { resolve } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -44,11 +46,11 @@ function encodedImage(block: SessionPromptParams['contentBlocks'][number]): bloc
   return block.type === 'image' && 'data' in block
 }
 
-async function durablePromptContent(ctx: Context, blocks: SessionPromptParams['contentBlocks']): Promise<ContentBlock[]> {
+async function durablePromptContent(ctx: Context, blocks: SessionPromptParams['contentBlocks'], language: DiagnosticLocale): Promise<ContentBlock[]> {
   const images = blocks.filter(encodedImage)
   if (images.length === 0) return blocks as ContentBlock[]
   const attachments = ctx.get('attachments')
-  if (attachments === undefined) throw new Error('SDK image prompt requires an attachment store')
+  if (attachments === undefined) throw new Error(diagnostics[language].attachments())
   const refs = await admitEncodedImages(attachments, images.map((image): EncodedImageAttachment => ({
     data: image.data,
     mediaType: image.mimeType,
@@ -66,6 +68,8 @@ function subagentParentOf(carrier: Scoped<SubagentRuntime>): Agent {
 
 /** Deployment-specific status mapping for SDK turn and subagent outcomes. */
 export interface HarnessSdkJsonRpcServerOptions {
+  /** Diagnostic language; omitted captures this process's effective locale. */
+  language?: DiagnosticLocale
   /** Report max-token termination as an accepted result instead of an infrastructure error. */
   maxTokensAsSuccess?: boolean
 }
@@ -81,6 +85,7 @@ function successStatus(reason: string, options: HarnessSdkJsonRpcServerOptions):
  * reinitialization is unsupported.
  */
 export class HarnessSdkJsonRpcServer {
+  private readonly language: DiagnosticLocale
   private cwd = process.cwd()
   private provider = 'deepseek-official'
   private model = 'deepseek-official'
@@ -99,6 +104,7 @@ export class HarnessSdkJsonRpcServer {
     private readonly transport: JsonRpcTransportPeer,
     private readonly options: HarnessSdkJsonRpcServerOptions = {},
   ) {
+    this.language = options.language ?? defaultDiagnosticLocale()
     const serverOptions = this.options
     this.disposers.push(ctx.on('session/event', (session, event) => {
       const record = this.sessions.get(session.id)
@@ -155,11 +161,11 @@ export class HarnessSdkJsonRpcServer {
   async initialize(params: InitializeParams): Promise<InitializeResult> {
     if (params.reasoningEffort !== undefined
       && (typeof params.reasoningEffort !== 'string' || params.reasoningEffort.length === 0)) {
-      throw new TypeError('initialize reasoningEffort must be a non-empty string')
+      throw new TypeError(diagnostics[this.language].effort())
     }
     if (params.maxTokens !== undefined
       && (!Number.isSafeInteger(params.maxTokens) || params.maxTokens <= 0)) {
-      throw new TypeError('initialize maxTokens must be a positive safe integer')
+      throw new TypeError(diagnostics[this.language].maxTokens())
     }
     const cwd = resolve(params.cwd)
     const provider = params.provider
@@ -168,7 +174,7 @@ export class HarnessSdkJsonRpcServer {
       ? undefined
       : ReasoningEffortId(params.reasoningEffort)
     if (!this.hasAdapterFor(provider)) {
-      if (provider !== 'deepseek-official') throw new Error(`no adapter registered for provider "${provider}"`)
+      if (provider !== 'deepseek-official') throw new Error(diagnostics[this.language].provider(provider))
       this.llmFiber = await this.ctx.plugin(LlmDeepSeek)
     }
     // Adapter presence was read from this service above; a successful fallback mount also requires it.
@@ -194,13 +200,13 @@ export class HarnessSdkJsonRpcServer {
    * @returns the durable message identity.
    */
   async prompt(params: SessionPromptParams): Promise<SessionPromptResult> {
-    if (!this.initialized) throw new Error('SDK server is not initialized')
+    if (!this.initialized) throw new Error(diagnostics[this.language].notInitialized())
     const rec = await this.getOrCreateSession(params.sessionId)
     // An agent-loop-only reload disposes the loop's agents while this record
     // survives; a retained agent accepts followup() silently, so validate the
     // record against the live registry before delivery.
     this.assertLiveAgent(rec, params.sessionId)
-    const content = await durablePromptContent(this.ctx, params.contentBlocks)
+    const content = await durablePromptContent(this.ctx, params.contentBlocks, this.language)
     // Attachment admission crosses an async boundary where shutdown or an
     // agent-loop reload may detach the retained handle.
     this.assertLiveAgent(rec, params.sessionId)
@@ -220,11 +226,11 @@ export class HarnessSdkJsonRpcServer {
    * @returns an empty result after the Agent is ready for prompts.
    */
   async resume(params: SessionResumeParams): Promise<Record<string, never>> {
-    if (!this.initialized) throw new Error('SDK server is not initialized')
-    if (this.shuttingDown) throw new Error('SDK server is shutting down')
+    if (!this.initialized) throw new Error(diagnostics[this.language].notInitialized())
+    if (this.shuttingDown) throw new Error(diagnostics[this.language].shuttingDown())
     const sessionId = params.sessionId
     if (this.sessions.has(sessionId) || this.sessionCreations.has(sessionId)) {
-      throw new Error(`SDK session is already open or opening: ${sessionId}`)
+      throw new Error(diagnostics[this.language].sessionOpen(sessionId))
     }
     await this.openSession(sessionId, true)
     return {}
@@ -238,9 +244,9 @@ export class HarnessSdkJsonRpcServer {
    * @returns an empty result after the root stays idle across the descendant check.
    */
   async wait(params: SessionWaitParams): Promise<Record<string, never>> {
-    if (!this.initialized) throw new Error('SDK server is not initialized')
+    if (!this.initialized) throw new Error(diagnostics[this.language].notInitialized())
     const rec = this.sessions.get(params.sessionId)
-    if (rec === undefined) throw new Error(`unknown SDK session: ${params.sessionId}`)
+    if (rec === undefined) throw new Error(diagnostics[this.language].unknownSession(params.sessionId))
     const agent = rec.handle.agent
     const subagents = this.ctx.get('subagents')
     while (true) {
@@ -258,7 +264,7 @@ export class HarnessSdkJsonRpcServer {
 
   private assertLiveAgent(rec: SessionRecord, sessionId: string): void {
     if (this.ctx.agents.get(rec.handle.agent.id) !== rec.handle.agent) {
-      throw new Error(`session agent was disposed outside the server: ${sessionId}`)
+      throw new Error(diagnostics[this.language].disposed(sessionId))
     }
   }
 
@@ -283,7 +289,7 @@ export class HarnessSdkJsonRpcServer {
   }
 
   private async workingDirectoryAgent(sessionId: string): Promise<Agent> {
-    if (!this.initialized) throw new Error('SDK server is not initialized')
+    if (!this.initialized) throw new Error(diagnostics[this.language].notInitialized())
     const rec = await this.getOrCreateSession(sessionId)
     this.assertLiveAgent(rec, sessionId)
     return rec.handle.agent
@@ -329,7 +335,7 @@ export class HarnessSdkJsonRpcServer {
       .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
       .map(result => result.reason as unknown))
     if (failures.length === 1) throw failures[0]
-    if (failures.length > 1) throw new AggregateError(failures, 'SDK server teardown failed')
+    if (failures.length > 1) throw new AggregateError(failures, diagnostics[this.language].cleanup())
     return {}
   }
 
@@ -349,35 +355,35 @@ export class HarnessSdkJsonRpcServer {
       case 'session/resume': {
         const sessionId = params?.sessionId
         if (typeof sessionId !== 'string' || sessionId.length === 0) {
-          throw new TypeError('session/resume requires a non-empty sessionId string')
+          throw new TypeError(diagnostics[this.language].resumeId())
         }
         return this.resume({ sessionId })
       }
       case 'session/wait': {
         const sessionId = params?.sessionId
-        if (typeof sessionId !== 'string') throw new TypeError('session/wait requires a sessionId string')
+        if (typeof sessionId !== 'string') throw new TypeError(diagnostics[this.language].waitId())
         return this.wait({ sessionId })
       }
       case 'session/working-directory/get':
       case 'session/working-directory/set': {
         if (typeof params?.sessionId !== 'string' || params.sessionId.length === 0) {
-          throw new TypeError('working-directory requests require a non-empty sessionId')
+          throw new TypeError(diagnostics[this.language].directoryId())
         }
         if (method === 'session/working-directory/get') {
           return this.getWorkingDirectory({ sessionId: params.sessionId })
         }
-        if (typeof params.path !== 'string') throw new TypeError('working-directory set requires a path string')
+        if (typeof params.path !== 'string') throw new TypeError(diagnostics[this.language].directoryPath())
         return this.setWorkingDirectory({ sessionId: params.sessionId, path: params.path })
       }
       case 'shutdown':
         return this.shutdown()
       default:
-        throw new Error(`unknown DeepSeek Harness SDK runtime method: ${method}`)
+        throw new Error(diagnostics[this.language].method(method))
     }
   }
 
   private async getOrCreateSession(sessionId: string): Promise<SessionRecord> {
-    if (this.shuttingDown) throw new Error('SDK server is shutting down')
+    if (this.shuttingDown) throw new Error(diagnostics[this.language].shuttingDown())
     const existing = this.sessions.get(sessionId)
     if (existing) return existing
     const pending = this.sessionCreations.get(sessionId)

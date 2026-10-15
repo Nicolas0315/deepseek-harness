@@ -12,6 +12,8 @@
  * @module @deepseek-ai/dsh-web-app
  */
 
+import { diagnosticMessages } from './diagnostics.ts'
+import { resolveCommandLocale } from '@deepseek-ai/dsh-cmdline'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
@@ -103,7 +105,7 @@ try {
       launcher.once('error', onError)
       launcher.once('close', onClose)
     })
-    if (code !== 0) throw new Error('browser operating-system launcher exited with code ' + String(code))
+    if (code !== 0) throw new Error(process.argv[2] + String(code))
   }
   process.exitCode = 0
 } catch (error) {
@@ -121,21 +123,22 @@ try {
  * ships its own page and carries no dist) boots without one.
  */
 function resolveDistIndex(): string {
+  const messages = diagnosticMessages()
   const require = createRequire(import.meta.url)
   try {
     return join(dirname(require.resolve('@deepseek-ai/dsh-web-frontend/package.json')), 'dist', 'index.html')
   } catch {
     /* v8 ignore next 2 -- reachable only when the frontend package is absent from the checkout */
-    throw new Error('web-app: @deepseek-ai/dsh-web-frontend is not resolvable from this composition')
+    throw new Error(messages.webAppDeepseekAiDshWebFrontendIsNot)
   }
 }
 
 /** Start the maintained platform opener without forwarding Harness credentials. */
-function spawnBrowserLauncher(url: string): ChildProcess {
+function spawnBrowserLauncher(url: string, messages: ReturnType<typeof diagnosticMessages>): ChildProcess {
   return spawn(process.execPath, [
     '--input-type=module',
     '--eval', BROWSER_OPENER_PROGRAM,
-    '--', url,
+    '--', url, messages.browserOsLauncherFailed,
   ], {
     env: scrubbedParentEnv(),
     stdio: ['ignore', 'inherit', 'pipe'],
@@ -144,7 +147,8 @@ function spawnBrowserLauncher(url: string): ChildProcess {
 
 /** Hand one URL to the operating system's default browser. */
 async function openBrowser(url: string): Promise<void> {
-  const launcher = spawnBrowserLauncher(url)
+  const messages = diagnosticMessages()
+  const launcher = spawnBrowserLauncher(url, messages)
   let launcherStderr = ''
   launcher.stderr?.setEncoding('utf8')
   launcher.stderr?.on('data', (chunk: string) => { launcherStderr += chunk })
@@ -158,7 +162,7 @@ async function openBrowser(url: string): Promise<void> {
       if (code !== 0) {
         const firstLine = launcherStderr.trim().split(/\r?\n/u)[0]
         const reason = firstLine === undefined || firstLine === ''
-          ? `browser launcher exited with code ${String(code)}`
+          ? messages.browserLauncherFailed(String(code))
           : firstLine.replace(/^(?:[A-Za-z]*Error):\s*/u, '')
         reject(new Error(reason))
         return
@@ -184,18 +188,16 @@ export const internals: {
  * @param config - validated {@link Config}.
  */
 export function apply(ctx: Context, config: Config): void {
+  const messages = diagnosticMessages(resolveCommandLocale(ctx))
   // The schema validates a present string; an explicit YAML `null` bypasses
   // the string transform and reaches here, meaning unset.
   const publicUrl = config.publicUrl ?? undefined
   const boundHost = ctx.webServer.host
   if (publicUrl === undefined && bindUrlHost(boundHost) === undefined) {
-    throw new Error(
-      `web-app: bind address ${JSON.stringify(boundHost)} carries an interface zone id, which no URL can express;`
-      + ' pass --public-url with the root browsers actually reach it through',
-    )
+    throw new Error(messages.webAppBindAddressCarriesAnInterfaceZoneId(JSON.stringify(boundHost)))
   }
   if (ctx.webServer.protocol === 'http:' && !isLoopbackHost(boundHost)) {
-    console.warn(`dsh web: listening on ${boundHost} over plain HTTP; restrict this port to a trusted proxy or network`)
+    console.warn(messages.dshWebListeningOnOverPlainHTTPRestrictThis(boundHost))
   }
   // The bind URL belongs to this host. Under SSH, the operator reaches it
   // through a local forwarding address that this process cannot derive.
@@ -231,10 +233,10 @@ export function apply(ctx: Context, config: Config): void {
           console.log(`dsh web: ${authenticatedUrl}`)
         }
         if (handoffBrowser) {
-          console.log('dsh web: opening the default browser; pass --no-open to disable')
+          console.log(messages.dshWebOpeningTheDefaultBrowserPassNoOpen)
           void internals.openBrowser(authenticatedUrl).catch((error: unknown) => {
             const reason = error instanceof Error ? error.message : String(error)
-            console.error(`web-app: could not open the default browser because ${reason}; use the dsh web URL printed at startup`)
+            console.error(messages.webAppCouldNotOpenTheDefaultBrowserBecause(reason))
           })
         }
       }

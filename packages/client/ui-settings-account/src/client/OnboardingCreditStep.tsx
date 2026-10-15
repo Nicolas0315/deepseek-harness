@@ -3,6 +3,7 @@ import type { RefObject } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { DesktopOnboardingProps } from './onboarding-contract.ts'
 import { OnboardingIllustration } from './OnboardingIllustration.tsx'
+import { OnboardingProductPreview } from './OnboardingProductPreview.tsx'
 import art from './assets/onboarding-recharge.webp'
 import artDark from './assets/onboarding-recharge-dark.webp'
 import artZh from './assets/onboarding-recharge-zh.webp'
@@ -21,7 +22,8 @@ export function OnboardingCreditStep({ t, locale, heading, busy, funded, canRech
     onLater: () => void
   }) {
   return <div className={`${css.content} ${css.credit}`}>
-    <OnboardingIllustration className={css.creditIllustration} src={locale === 'zh' ? artZh : art} darkSrc={locale === 'zh' ? artZhDark : artDark} />
+    {locale === 'ja' ? <OnboardingProductPreview kind="credit" t={t} className={css.creditIllustration} />
+      : <OnboardingIllustration className={css.creditIllustration} src={locale === 'zh' ? artZh : art} darkSrc={locale === 'zh' ? artZhDark : artDark} />}
     <div className={css.copy}>
       <h1 id="desktop-onboarding-title" ref={heading} tabIndex={-1}>{t('onboardingCredit')}</h1>
       <p className={css.heroDescription}>{t('onboardingCreditDescription')}</p>

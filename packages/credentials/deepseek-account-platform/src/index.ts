@@ -65,7 +65,15 @@ export const Config = Schema.object({
   attemptTimeoutMs: Schema.number().min(1).max(3_600_000).default(600_000),
 })
 
+const failedCallbackMessages = {
+  en: 'Sign-in failed. Close this tab and try again in the original tab.',
+  'zh-CN': '登录失败，请关闭此标签页并在原页面重试。',
+  ja: 'ログインに失敗しました。このタブを閉じ、元のタブで再試行してください。',
+} satisfies Record<'en' | 'zh-CN' | 'ja', string>
+
 interface Attempt {
+  /** Captured callback display language, independent of Platform's two wire locales. */
+  uiLocale: keyof typeof failedCallbackMessages
   locale: 'en_US' | 'zh_CN'
   clientHeaders: Record<string, string>
   view: SignInAttemptView
@@ -414,9 +422,11 @@ export class PlatformAccount extends DeepSeekAccount {
       if (this.closed) throw new PlatformAuthError('protocol')
       if (this.attempt !== previous) return this.getState()
     }
+    const locale = platformWireLocale(client.locale)
     const attempt: Attempt = {
       origin, loginSource,
-      locale: platformWireLocale(client.locale),
+      uiLocale: client.locale.toLowerCase().split(/[-_]/)[0] === 'ja' ? 'ja' : locale === 'zh_CN' ? 'zh-CN' : 'en',
+      locale,
       clientHeaders: platformClientHeaders(this.platform, client),
       view: { id: randomUUID() as SignInAttemptId, phase: 'initializing' },
       controller: new AbortController(), done: Promise.resolve(), running: Promise.resolve(),
@@ -638,13 +648,12 @@ export class PlatformAccount extends DeepSeekAccount {
   private finishFailedCallback(attempt: Attempt): void {
     if (attempt.loginSource === 'web') {
       const nonce = randomBytes(16).toString('base64url')
-      const message = attempt.locale === 'zh_CN' ? '登录失败，请关闭此标签页并在原页面重试。'
-        : 'Sign-in failed. Close this tab and try again in the original tab.'
+      const message = failedCallbackMessages[attempt.uiLocale]
       attempt.callback?.writeHead(200, {
         'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store',
         'content-security-policy': `default-src 'none'; script-src 'nonce-${nonce}'; frame-ancestors 'none'`,
         'referrer-policy': 'no-referrer',
-      }).end(`<!doctype html><html lang="${attempt.locale === 'zh_CN' ? 'zh-CN' : 'en'}"><meta charset="utf-8"><title>${message}</title>`
+      }).end(`<!doctype html><html lang="${attempt.uiLocale}"><meta charset="utf-8"><title>${message}</title>`
         + `<body><p>${message}</p><script nonce="${nonce}">window.close()</script></body></html>`)
     } else {
       // Native account subscribers focus the login window; retain the browser’s Platform document.

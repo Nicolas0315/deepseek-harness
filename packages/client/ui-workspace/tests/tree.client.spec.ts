@@ -624,6 +624,26 @@ describe('deriveSearchResults archive filtering', () => {
 })
 
 describe('deriveSearchResults', () => {
+  it.each([
+    ['が', 'か\u3099'],
+    ['か\u3099', 'が'],
+    ['ガ', 'ｶﾞ'],
+    ['ｶﾞ', 'ガ'],
+  ])('matches canonically equivalent Japanese titles and workspace names (%s / %s)', (query, stored) => {
+    const titleHit = summary('japanese-title', 30, '/資料/会話')
+    titleHit.title = titleHit.displayTitle = `${stored}くせいとの相談`
+    const workspaceHit = summary('japanese-workspace', 20, '/資料/別件')
+    const result = deriveSearchResults(
+      list(titleHit, workspaceHit),
+      [workspace('日本語', ['japanese-workspace'], `${stored}くせいの資料`)],
+      query, noArchive, 'default', noAttention, { items: [], hasMore: false }, 10,
+    )
+    expect(result.items.map(item => item.id)).toEqual([titleHit.id, workspaceHit.id])
+    expect(result.items[0]?.title).toBe(`${stored}くせいとの相談`)
+    expect(result.items[1]?.workspace).toBe(`${stored}くせいの資料`)
+    expect(titleHit.displayTitle).toBe(`${stored}くせいとの相談`)
+  })
+
   it('merges local title/Workspace matches before ranked content hits and enriches duplicates', () => {
     const titleHit = summary('title-hit', 30, '/projects/a')
     titleHit.title = titleHit.displayTitle = 'Needle title'

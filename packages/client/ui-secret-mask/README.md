@@ -29,6 +29,8 @@ Mount the package beside `dsh-client-ui-conversation`. The Web app bundle mounts
 
 Each masked value is drawn in a monospace font, so revealing it does not move the surrounding text. Interactive text, which is a sent message or an admitted steering message, adds an eye control at the end of each run. The control reveals or hides that one value, and every mount starts masked. Other callers draw the masked value without a control.
 
+Reveal and hide controls use the interface language: English, Simplified Chinese, or Japanese. Changing the language does not change the original credential or its masked spelling.
+
 <a id="what-is-masked"></a>
 ### What is masked
 

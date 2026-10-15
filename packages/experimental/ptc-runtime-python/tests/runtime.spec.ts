@@ -3107,19 +3107,16 @@ describe('PythonPtcRuntime — budgets, termination, disposal', () => {
   })
 
   it('charges a forked descendant against the run CPU budget', async () => {
-    // RLIMIT_CPU is per-process and every child inherits a FRESH budget, so a
-    // program that shells out multiplies `cpuSeconds` by the number of
-    // descendants it starts. Measured before the aggregate meter existed: with
-    // cpuSeconds 1, two sequential busy children burned 2.0 CPU-seconds
-    // (RUSAGE_CHILDREN) and the run still returned a SUCCESS completion. The
-    // settle-time check meters RUSAGE_SELF + RUSAGE_CHILDREN and converts the
-    // overrun into the same SIGXCPU the untrapped soft limit sends.
+    // Each child stays below its per-process RLIMIT_CPU, but the two reaped
+    // children together exceed the run's aggregate CPU budget. Measure CPU
+    // directly: elapsed wall time includes periods when a busy CI host does
+    // not schedule the child and therefore cannot establish CPU consumption.
     const { runtime } = await setup({ cpuSeconds: 1, maxWallMs: 30_000 })
     const result = await runtime.run(runtime.resolve({
       program: [
         'import subprocess, sys',
         'for _ in range(2):',
-        '    subprocess.run([sys.executable, "-c", "import time\\nt=time.time()\\nwhile time.time()-t<1.2: pass"])',
+        '    subprocess.run([sys.executable, "-c", "import time\\nend=time.process_time()+0.65\\nwhile time.process_time()<end: pass"], check=True)',
         'return "escaped the cpu budget"',
       ].join('\n'),
       bindings: [],

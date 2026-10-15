@@ -28,6 +28,12 @@
     },
     {
       "path": "../cmdline"
+    },
+    {
+      "path": "../../util/diagnostic-locale"
+    },
+    {
+      "path": "../../util/launch-environment"
     }
   ]
 }

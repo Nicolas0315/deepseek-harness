@@ -1,14 +1,16 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { PassThrough } from 'node:stream'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
-import type { JsonRpcTransportPeer, SessionEventNotification } from '@deepseek-ai/dsh-sdk-protocol'
+import { JsonRpcLineTransport, type JsonRpcTransportPeer, type SessionEventNotification } from '@deepseek-ai/dsh-sdk-protocol'
 import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import { HarnessSdkJsonRpcServer } from '../src/index.ts'
 
 const cleanups: (() => Promise<void>)[] = []
@@ -22,7 +24,7 @@ async function storageRoot(): Promise<string> {
   return root
 }
 
-async function runtime(root: string, persistence = true) {
+async function runtime(root: string, persistence = true, language: DiagnosticLocale = 'en') {
   const ctx = new Context()
   cleanups.push(() => ctx.fiber.dispose())
   await mountAgentLoopTestDependencies(ctx)
@@ -37,7 +39,7 @@ async function runtime(root: string, persistence = true) {
       if (method === 'session.event') events.push(params as SessionEventNotification)
     },
   }
-  const server = new HarnessSdkJsonRpcServer(ctx, transport)
+  const server = new HarnessSdkJsonRpcServer(ctx, transport, { language })
   cleanups.push(() => server.shutdown().then(() => {}))
   return { ctx, server, adapter, events }
 }
@@ -49,6 +51,35 @@ async function initialized(root: string) {
 }
 
 describe('SDK persisted session resume', () => {
+  it.each([
+    ['ja', 'SDK サーバーが初期化されていません', 'session/resume には空でない文字列の sessionId が必要です',
+      'SDK セッションはすでに開かれているか、復元中です: owned', 'SDK サーバーは終了処理中です'],
+    ['zh', 'SDK 服务器未初始化', 'session/resume 需要非空字符串 sessionId',
+      'SDK 会话已打开或正在恢复：owned', 'SDK 服务器正在关闭'],
+  ] as const)('localizes resume validation and ownership failures (%s)', async (language, uninitialized, invalid, occupied, shutdown) => {
+    const { ctx } = await runtime(await storageRoot())
+    const incoming = new PassThrough()
+    const outgoing = new PassThrough()
+    const endpoint = new JsonRpcLineTransport(incoming, outgoing, language)
+    const client = new JsonRpcLineTransport(outgoing, incoming, language)
+    const server = new HarnessSdkJsonRpcServer(ctx, endpoint, { language })
+    cleanups.push(async () => { client.close(); endpoint.close(); await server.shutdown() })
+    endpoint.onRequest((method, params) => server.handleRequest(method, params))
+    endpoint.start()
+    client.start()
+    await expect(client.request('session/resume', { sessionId: 'owned' })).rejects.toMatchObject({ code: -32603, message: uninitialized })
+    for (const params of [{}, { sessionId: '' }, { sessionId: 1 }]) {
+      await expect(client.request('session/resume', params)).rejects.toMatchObject({ code: -32603, message: invalid })
+    }
+    await client.request('initialize', { cwd: tmpdir(), provider: 'mock', model: 'mock' })
+    await client.request('session/prompt', { sessionId: 'owned', contentBlocks: [{ type: 'text', text: 'remember' }] })
+    await client.request('session/wait', { sessionId: 'owned' })
+    await expect(client.request('session/resume', { sessionId: 'owned' })).rejects.toMatchObject({ code: -32603, message: occupied })
+    await server.shutdown()
+    await expect(client.request('session/resume', { sessionId: 'owned' })).rejects.toMatchObject({ code: -32603, message: shutdown })
+  })
+
+
   it('restores a non-main identity, preserves history and origin, and appends a new turn', async () => {
     const root = await storageRoot()
     const first = await initialized(root)

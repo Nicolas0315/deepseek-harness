@@ -1,4 +1,6 @@
 /** Profile-local compatibility permissions readable before any Cordis plugins load. */
+import { diagnosticMessages, defaultDiagnosticLocale } from './diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import { readFileSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -29,13 +31,19 @@ export function isExactPluginVersion(value: string): boolean {
 /** Validate one explicit exemption without granting it.
  * @param packageVersion Exact npm package-name@version, never an installation spec or range.
  * @param runtimeVersion Exact DSH version, including prerelease and build metadata.
+ * @param locale - diagnostic language captured for this operation.
  * @throws When either identity is not canonical.
  */
-export function validatePluginVersionExemption(packageVersion: string, runtimeVersion: string): void {
+export function validatePluginVersionExemption(
+  packageVersion: string,
+  runtimeVersion: string,
+  locale: DiagnosticLocale = defaultDiagnosticLocale(),
+): void {
+  const messages = diagnosticMessages(locale)
   const separator = packageVersion.lastIndexOf('@')
   if (separator <= 0 || !PACKAGE_NAME.test(packageVersion.slice(0, separator))
     || !isExactPluginVersion(packageVersion.slice(separator + 1)) || !isExactPluginVersion(runtimeVersion)) {
-    throw new Error('Version exemptions require an exact npm package-name@version and an exact DSH runtime version')
+    throw new Error(messages.versionExemptionsRequireAnExactNpmPackageNameVersion)
   }
 }
 
@@ -57,34 +65,36 @@ export interface ProfileCompatibility {
  * reported instead of failing, so a bad file can never make the profile unusable; rejected records
  * are skipped while the remaining valid ones still apply.
  * @param profileDir Absolute profile directory.
+ * @param locale - diagnostic language captured for this operation.
  * @returns Accepted exemptions plus every problem found; no manifest fallback is used.
  */
-export function readProfileCompatibility(profileDir: string): ProfileCompatibility {
+export function readProfileCompatibility(profileDir: string, locale: DiagnosticLocale = defaultDiagnosticLocale()): ProfileCompatibility {
+  const messages = diagnosticMessages(locale)
   const filename = join(profileDir, PROFILE_COMPATIBILITY_FILENAME)
   const unreadable = (reason: string): ProfileCompatibility =>
-    ({ exemptions: {}, warnings: [`${filename} ${reason}; treating the profile as having no exemptions`], rewritable: false })
+    ({ exemptions: {}, warnings: [messages.noExemptions(filename, reason)], rewritable: false })
   let text: string
   try { text = readFileSync(filename, 'utf8') }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { exemptions: {}, warnings: [], rewritable: true }
-    return unreadable(`cannot be read (${String(error)})`)
+    return unreadable(messages.compatibilityUnreadable(String(error)))
   }
   let value: unknown
   try { value = JSON.parse(text) }
-  catch (error) { return unreadable(`is not valid JSON (${String(error)})`) }
+  catch (error) { return unreadable(messages.compatibilityInvalidJson(String(error))) }
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return unreadable('must map exact package@version keys to DSH version lists')
+    return unreadable(messages.compatibilityMapping)
   }
   const exemptions: Record<string, string[]> = {}
   const warnings: string[] = []
   for (const [key, versions] of Object.entries(value as Record<string, unknown>)) {
     const separator = key.lastIndexOf('@')
     if (separator <= 0 || !PACKAGE_NAME.test(key.slice(0, separator)) || !isExactPluginVersion(key.slice(separator + 1))) {
-      warnings.push(`${filename}: ${JSON.stringify(key)} is not an exact package-name@version key; the record is ignored`)
+      warnings.push(messages.invalidExemptionKey(filename, JSON.stringify(key)))
       continue
     }
     if (!isVersionList(versions)) {
-      warnings.push(`${filename}: ${key} must contain a list of exact DSH versions; the record is ignored`)
+      warnings.push(messages.invalidExemptionVersions(filename, key))
       continue
     }
     exemptions[key] = versions
@@ -94,10 +104,14 @@ export function readProfileCompatibility(profileDir: string): ProfileCompatibili
 
 /** Read only the accepted exemptions of a profile.
  * @param profileDir Absolute profile directory.
+ * @param locale - diagnostic language captured for this operation.
  * @returns Exact package-name@version keys mapped to their allowed DSH versions.
  */
-export function readProfileVersionExemptions(profileDir: string): Record<string, string[]> {
-  return readProfileCompatibility(profileDir).exemptions
+export function readProfileVersionExemptions(
+  profileDir: string,
+  locale: DiagnosticLocale = defaultDiagnosticLocale(),
+): Record<string, string[]> {
+  return readProfileCompatibility(profileDir, locale).exemptions
 }
 
 /** Persist one informed grant or revocation under the compatibility file's own lock.
@@ -106,27 +120,30 @@ export function readProfileVersionExemptions(profileDir: string): Record<string,
  * @param runtimeVersion Exact DSH version; grants must name the current runtime, revocations may name historical ones.
  * @param enabled Whether to grant rather than revoke.
  * @param acceptRisk Required true for grants after explicit acknowledgement of possible crashes or data loss.
+ * @param locale - diagnostic language captured for this operation.
  * @returns After the atomic write. Existing plugin instances are not reloaded by this operation.
  * @throws For invalid identities, missing consent, a stale runtime, or a file the reader rejected,
  * which the user must repair by hand because rewriting it would discard their content.
  */
 export async function setProfileVersionExemption(
   profileDir: string, packageVersion: string, runtimeVersion: string, enabled: boolean, acceptRisk: boolean,
+  locale: DiagnosticLocale = defaultDiagnosticLocale(),
 ): Promise<void> {
-  validatePluginVersionExemption(packageVersion, runtimeVersion)
+  const messages = diagnosticMessages(locale)
+  validatePluginVersionExemption(packageVersion, runtimeVersion, locale)
   if (enabled && !acceptRisk) {
-    throw new Error('Incompatible plugins may cause crashes or data loss. To grant this exact-version exemption, explicitly acknowledge the risk with --accept-risk (acceptRisk: true).')
+    throw new Error(messages.incompatiblePluginsMayCauseCrashesOrDataLossTo)
   }
-  const current = getDshRuntimeVersion()
+  const current = getDshRuntimeVersion(locale)
   if (enabled && runtimeVersion !== current) {
-    throw new Error(`Cannot approve DSH ${runtimeVersion}: this application runs DSH ${current}. Use --dsh-version ${current}.`)
+    throw new Error(messages.cannotApproveDSHThisApplicationRunsDSHUseDsh(runtimeVersion, current, current))
   }
   await mkdir(profileDir, { recursive: true })
   const filename = join(profileDir, PROFILE_COMPATIBILITY_FILENAME)
   await withFileLock(filename, async () => {
-    const current = readProfileCompatibility(profileDir)
+    const current = readProfileCompatibility(profileDir, locale)
     if (!current.rewritable) {
-      throw new Error(`${PROFILE_COMPATIBILITY_FILENAME} must be repaired before exemptions change:\n${current.warnings.join('\n')}`)
+      throw new Error(messages.mustBeRepairedBeforeExemptionsChange(PROFILE_COMPATIBILITY_FILENAME, current.warnings.join('\n')))
     }
     const exemptions = current.exemptions
     const versions = exemptions[packageVersion] ?? []

@@ -212,6 +212,83 @@ async function liveContext(config: ConstructorParameters<typeof SqliteSessionQue
 }
 
 describe('SQLite session search', () => {
+  it('finds Japanese phrases within live messages while preserving original snippets and Latin token recall', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjectionRegistry)
+    const search = await ctx.plugin(SqliteSessionQueryEngine, { path: ':memory:' })
+    try {
+      const text = 'これは日本語の文章です。ｶﾞｲﾄﾞとカフェ\u3099、APIを使う。葛\u{E0100}と𠮷😀。'
+      ctx.sessions.create(SessionId('japanese'), { seed: messageEvents(text) })
+      for (const query of ['日本語', '日本', '日', 'これは', 'ガイド', 'カフェ\u3099', 'カフェ゙', 'API', 'APIを使う', '葛', '𠮷']) {
+        const page = await ctx.sessionQuery.searchSessions({ query })
+        expect(page.items.map(hit => hit.header.id), query).toEqual(['japanese'])
+        expect(page.items[0]?.bestMatch.snippet, query).toBe(text)
+        const events = await ctx.sessionQuery.searchEvents({ sessionId: SessionId('japanese'), query })
+        expect(events.items.map(hit => hit.snippet), query).toEqual([text])
+      }
+      ctx.sessions.create(SessionId('english'), { seed: messageEvents('BRAID braided API') })
+      expect((await ctx.sessionQuery.searchSessions({ query: 'AI' })).items).toEqual([])
+      expect((await ctx.sessionQuery.searchSessions({ query: '日本 OR 語' })).items).toEqual([])
+    } finally {
+      await search.dispose()
+    }
+  })
+
+  it('normalizes fullwidth-only messages in live and persisted search without changing snippets', async () => {
+    const text = 'ＡＢＣ１２３'
+    const persisted = header('fullwidth-persisted')
+    TestPersistence.reset([{ meta: persisted, events: messageEvents(text) }])
+    const ctx = await liveContext()
+    const persistence = await ctx.plugin(TestPersistence)
+    const live = ctx.sessions.create(SessionId('fullwidth-live'), { seed: messageEvents(text) })
+    try {
+      for (const query of ['ABC123', text]) {
+        const page = await ctx.sessionQuery.searchSessions({ query })
+        expect(page.items.map(hit => hit.header.id).sort()).toEqual([live.id, persisted.id].sort())
+        expect(page.items.map(hit => hit.bestMatch.snippet)).toEqual([text, text])
+        for (const id of [live.id, persisted.id]) {
+          const events = await ctx.sessionQuery.searchEvents({ sessionId: id, query })
+          expect(events.items.map(hit => hit.snippet)).toEqual([text])
+        }
+      }
+      expect((await ctx.sessionQuery.searchSessions({ query: 'ABC' })).items).toEqual([])
+    } finally {
+      await persistence.dispose()
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('ranks Japanese occurrences once across both columns and paginates without repeated hits', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjectionRegistry)
+    const search = await ctx.plugin(SqliteSessionQueryEngine, { path: ':memory:' })
+    try {
+      ctx.sessions.create(SessionId('twice'), { seed: messageEvents('日本語 日本語') })
+      const three = ctx.sessions.create(SessionId('three'), {
+        seed: [
+          ...messageEvents('これは日本語の文章です。これは日本語の文章です。これは日本語の文章です。'),
+          { ...messageEvents('日本語を読む')[0]!, seq: SessionSeq(1) },
+        ],
+      })
+      const first = await ctx.sessionQuery.searchSessions({ query: '日本語', limit: 1 })
+      expect(first.items.map(hit => hit.header.id)).toEqual(['three'])
+      expect(first.nextCursor).toBeDefined()
+      const next = await ctx.sessionQuery.searchSessions({ query: '日本語', limit: 1, cursor: first.nextCursor! })
+      expect(next.items.map(hit => hit.header.id)).toEqual(['twice'])
+      expect(next.nextCursor).toBeUndefined()
+      const events = await ctx.sessionQuery.searchEvents({ sessionId: three.id, query: '日本語', limit: 1 })
+      expect(events.items.map(hit => hit.snippet)).toEqual(['これは日本語の文章です。これは日本語の文章です。これは日本語の文章です。'])
+      expect(events.nextCursor).toBeDefined()
+      const remaining = await ctx.sessionQuery.searchEvents({ sessionId: three.id, query: '日本語', limit: 1, cursor: events.nextCursor! })
+      expect(remaining.items.map(hit => hit.snippet)).toEqual(['日本語を読む'])
+      expect(remaining.nextCursor).toBeUndefined()
+    } finally {
+      await search.dispose()
+    }
+  })
+
   it('defaults and validates opening policy and persisted inspection concurrency through its Cordis config', async () => {
     const defaultCtx = await liveContext()
     expect((defaultCtx.sessionQuery as SqliteSessionQueryEngine).config.openAt).toBe('startup')

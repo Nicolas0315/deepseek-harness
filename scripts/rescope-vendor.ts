@@ -140,6 +140,38 @@ const GENERIC_SKIPS: readonly GenericSkip[] = [
   { file: 'packages/extensions/ui-cordis/src/client/locales.ts', upstream: ['cordis'] },
 ]
 
+// The product's Creator preset is called `cordis`. These files use that exact
+// persisted id, event topic, or user-facing name. A newly added package
+// specifier still follows the rescope below.
+const PRODUCT_CORDIS_FILES = new Set([
+  'docs/upgrade-guide/v0.2.1-alpha.1/subagent-preset-composition/guide.md',
+  'docs/upgrade-guide/v0.2.1-alpha.1/subagent-preset-composition/guide.zh.md',
+  'apps/cli/tests/optional-bundle-transitions.e2e.ts',
+  'apps/web/tests/agent-preset-selection.e2e.ts',
+  'apps/web/tests/developer-tools-settings.e2e.ts',
+  'docs/subsystems/schedule.md',
+  'docs/subsystems/schedule.zh.md',
+  'docs/upgrade-guide/v0.2.0-rc.2/schedule-bundle-retired/guide.md',
+  'docs/upgrade-guide/v0.2.0-rc.2/schedule-bundle-retired/guide.zh.md',
+  'docs/user/guide/schedule.md',
+  'docs/user/guide/schedule.zh.md',
+  'packages/bundle/web-app/cordis.patch.yml',
+  'packages/client/ui-agent-preset/src/client/CreatePluginMenuItem.tsx',
+  'packages/client/ui-agent-preset/tests/components.client.spec.tsx',
+  'packages/client/ui-agent-preset/tests/create-plugin-menu-item.client.spec.tsx',
+  'packages/client/ui-agent-preset/tests/section-store.client.spec.ts',
+  'packages/extensions/cordis-host-runner/tests/inspect-registry.spec.ts',
+  'snapshots/session/cordis-inspect-liveness/client-fixture.mjs',
+  'snapshots/session/cordis-inspect-timeout/client-fixture.mjs',
+])
+
+const CORDIS_PACKAGE_SPECIFIER = new RegExp(
+  String.raw`\b(?:from\s*|import\s*(?:\(|(?=['"\x60]))|require(?:\.resolve)?\s*\(|import\.meta\.resolve\s*\(`
+  + String.raw`|(?:vi|jest)\.(?:doMock|mock|unmock|requireActual|requireMock|importActual|importMock)\s*\()`
+  + String.raw`(['"\x60])(?:@deepseek-ai/)?cordis(?:/[^'"\x60\s]*)?\1`,
+  'g',
+)
+
 /** A string that must appear exactly `count` times once the rescope has run. */
 interface PostCondition {
   readonly file: string
@@ -474,18 +506,45 @@ function patterns(reverse: boolean): Pattern[] {
     }))
 }
 
-function skipped(file: string, pattern: Pattern): boolean {
-  return GENERIC_SKIPS.some(skip => skip.file === file && skip.upstream.includes(pattern.upstream))
+/**
+ * Whether one upstream token names non-package product data in a file.
+ * @param file - Repository-relative path.
+ * @param upstream - Upstream package name considered by the generic rewrite.
+ * @param line - Candidate source line.
+ * @param offset - Start of the candidate token when a line mixes product data and package references.
+ * @returns Whether the generic rewrite must preserve the token.
+ */
+export function isRescopeSkipped(file: string, upstream: string, line = '', offset?: number): boolean {
+  if (GENERIC_SKIPS.some(skip => skip.file === file && skip.upstream.includes(upstream))) return true
+  if (upstream !== 'cordis' || !PRODUCT_CORDIS_FILES.has(file)) return false
+  for (const match of line.matchAll(CORDIS_PACKAGE_SPECIFIER)) {
+    if (offset === undefined || (offset >= match.index && offset < match.index + match[0].length)) return false
+  }
+  return true
 }
 
 function rewriteLine(line: string, file: string, all: readonly Pattern[]): string {
   let out = line
   for (const pattern of all) {
-    if (skipped(file, pattern)) continue
-    out = out.replace(pattern.token, (_match, quote: string, subpath: string) => `${quote}${pattern.to}${subpath}${quote}`)
+    if (GENERIC_SKIPS.some(skip => skip.file === file && skip.upstream.includes(pattern.upstream))) continue
+    const candidateLine = out
+    out = out.replace(pattern.token, (match, quote: string, subpath: string, offset: number) => (
+      isRescopeSkipped(file, pattern.upstream, candidateLine, offset) ? match : `${quote}${pattern.to}${subpath}${quote}`
+    ))
     out = out.replace(pattern.yamlName, (_match, prefix: string, suffix: string) => `${prefix}${pattern.to}${suffix}`)
   }
   return out
+}
+
+/**
+ * Apply the generic package mapping to one authored line while retaining product identifiers.
+ * @param line - Original source line.
+ * @param file - Repository-relative path controlling narrow product exceptions.
+ * @param reverse - Whether to restore upstream package names.
+ * @returns The line after package references are renamed.
+ */
+export function rewriteRescopeReference(line: string, file: string, reverse = false): string {
+  return rewriteLine(line, file, patterns(reverse))
 }
 
 /**

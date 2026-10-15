@@ -160,3 +160,9 @@ it('keeps a switch whose value is an alias', async () => {
   expect(await writePluginEnabled(profile, 'tool', 'package', true)).toBe(true)
   expect(loadOptionalPatches('test', profile.patchPath)).toEqual([{ id: 'other', config: { flag: true } }, { id: 'tool', disabled: false }])
 })
+
+it('uses the caller language for a non-sequence profile patch', async () => {
+  const profile = await fixture('{}\n')
+  await expect(writePluginEnabled(profile, 'tool', 'package', false, 'ja')).rejects.toThrow('プロファイルのパッチは YAML のシーケンスにしてください')
+  expect(await readFile(profile.patchPath, 'utf8')).toBe('{}\n')
+})

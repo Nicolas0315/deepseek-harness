@@ -44,3 +44,25 @@ export const en = {
   'chip.on.title': 'Plan mode on — click to turn off (/plan off)',
   'chip.exitFailed': 'Failed to exit plan mode',
 } satisfies Record<PlanKey, string>
+
+
+/** Japanese dictionary, checked against the complete source key set. */
+export const ja: Record<keyof typeof en, string> = {
+  'chip.label': '計画',
+  'preview.title': '計画',
+  'preview.document': '計画 · Markdown',
+  'preview.action': '開く',
+  'preview.open': 'サイドバーで計画を開く',
+  'preview.full': '計画の全文を表示',
+  'preview.openNamed': '計画を開く：{title}',
+  'preview.loading': '計画を読み込み中…',
+  'preview.failed': '計画を読み込めませんでした',
+  'preview.invalidAddress': '計画のアドレスが無効です',
+  'preview.historyUnavailable': 'セッション履歴を利用できません',
+  'preview.notFound': 'この計画が見つかりません',
+  'preview.unavailable': '計画のプレビューを利用できません',
+  'preview.expired': '一時的な計画プレビューの期限が切れました。承認待ちのカードから開き直してください。',
+  'chip.on.aria': '計画モードは有効です。押すと無効になります',
+  'chip.on.title': '計画モードは有効です。クリックすると無効になります（/plan off）',
+  'chip.exitFailed': '計画モードを終了できませんでした',
+}

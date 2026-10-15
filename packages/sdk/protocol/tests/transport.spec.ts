@@ -6,8 +6,8 @@ import { JsonRpcLineTransport, JsonRpcResponseError } from '../src/index.ts'
 function transportPair() {
   const aToB = new PassThrough()
   const bToA = new PassThrough()
-  const a = new JsonRpcLineTransport(bToA, aToB)
-  const b = new JsonRpcLineTransport(aToB, bToA)
+  const a = new JsonRpcLineTransport(bToA, aToB, 'en')
+  const b = new JsonRpcLineTransport(aToB, bToA, 'en')
   return { a, b, aToB, bToA }
 }
 
@@ -172,7 +172,7 @@ describe('JsonRpcLineTransport', () => {
   it('preserves multibyte UTF-8 characters split across Buffer chunks', async () => {
     const input = new PassThrough()
     const output = new PassThrough()
-    const transport = new JsonRpcLineTransport(input, output)
+    const transport = new JsonRpcLineTransport(input, output, 'en')
     const notifications: Record<string, unknown>[] = []
     transport.onNotification((method, params) => { notifications.push({ method, params }) })
     transport.start()
@@ -201,7 +201,7 @@ describe('JsonRpcLineTransport', () => {
         }, 5)
       },
     })
-    const transport = new JsonRpcLineTransport(new PassThrough(), output)
+    const transport = new JsonRpcLineTransport(new PassThrough(), output, 'en')
 
     transport.notify('tick')
     await transport.flush()
@@ -222,7 +222,7 @@ describe('JsonRpcLineTransport', () => {
         return true
       },
     }
-    const transport = new JsonRpcLineTransport(new PassThrough(), output as never)
+    const transport = new JsonRpcLineTransport(new PassThrough(), output as never, 'en')
 
     await expect(transport.flush()).rejects.toThrow('flush failed')
   })
@@ -265,7 +265,7 @@ describe('JsonRpcLineTransport', () => {
         throw new Error('write exploded')
       },
     }
-    const transport = new JsonRpcLineTransport(input, output as never)
+    const transport = new JsonRpcLineTransport(input, output as never, 'en')
 
     await expect(transport.request('write-fails', {})).rejects.toThrow('write exploded')
   })
@@ -277,7 +277,7 @@ describe('JsonRpcLineTransport', () => {
         throw 'write string'
       },
     }
-    const transport = new JsonRpcLineTransport(input, output as never)
+    const transport = new JsonRpcLineTransport(input, output as never, 'en')
 
     await expect(transport.request('write-fails', {})).rejects.toThrow('write string')
   })
@@ -304,4 +304,54 @@ describe('JsonRpcLineTransport', () => {
 
     b.close()
   })
+})
+
+describe('JSON-RPC diagnostic language', () => {
+  it.each([
+    { language: 'ja', aborted: 'JSON-RPC リクエストを中止しました: raw reason', method: 'メソッドが見つかりません: raw/method', closed: 'JSON-RPC トランスポートを閉じました' },
+    { language: 'zh', aborted: 'JSON-RPC 请求已中止：raw reason', method: '未找到方法：raw/method', closed: 'JSON-RPC 传输已关闭' },
+  ] as const)('localizes only transport-owned messages and preserves raw peer data ($language)', async ({ language, aborted, method, closed: closedMessage }) => {
+    const input = new PassThrough()
+    const output = new PassThrough()
+    const transport = new JsonRpcLineTransport(input, output, language)
+    transport.start()
+    try {
+      const controller = new AbortController()
+      controller.abort('raw reason')
+      await expect(transport.request('raw/method', {}, controller.signal))
+        .rejects.toThrow(aborted)
+      const pending = transport.request('raw/method', {})
+      const frame = JSON.parse(String(output.read())) as { id: string }
+      input.write(`${JSON.stringify({ jsonrpc: '2.0', id: frame.id, error: { code: 17, message: 'raw provider failure', data: { key: 'raw' } } })}\n`)
+      await expect(pending).rejects.toMatchObject({ name: 'JsonRpcResponseError', code: 17, message: 'raw provider failure', data: { key: 'raw' } })
+      input.write('{"jsonrpc":"2.0","id":"raw-id","method":"raw/method"}\n')
+      expect(JSON.parse(String(output.read()))).toEqual({ jsonrpc: '2.0', id: 'raw-id', error: { code: -32601, message: method } })
+      const closed = transport.request('pending', {})
+      transport.close()
+      await expect(closed).rejects.toThrow(closedMessage)
+    } finally {
+      transport.close()
+    }
+  })
+
+  it.each([
+    { language: 'ja', error: 'JSON-RPC エラー', inputClosed: 'JSON-RPC 入力を閉じました' },
+    { language: 'zh', error: 'JSON-RPC 错误', inputClosed: 'JSON-RPC 输入已关闭' },
+  ] as const)('localizes a missing peer error message and input closure ($language)', async ({ language, error, inputClosed }) => {
+    const input = new PassThrough(), output = new PassThrough()
+    const transport = new JsonRpcLineTransport(input, output, language)
+    transport.start()
+    try {
+      const pending = transport.request('raw/method', {})
+      const frame = JSON.parse(String(output.read())) as { id: string }
+      input.write(`${JSON.stringify({ jsonrpc: '2.0', id: frame.id, error: { code: 17, data: 'raw data' } })}\n`)
+      await expect(pending).rejects.toMatchObject({ code: 17, message: error, data: 'raw data' })
+      const closed = transport.request('pending', {})
+      input.end()
+      await expect(closed).rejects.toThrow(inputClosed)
+    } finally {
+      transport.close()
+    }
+  })
+
 })

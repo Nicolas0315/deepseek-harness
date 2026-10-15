@@ -1926,9 +1926,9 @@ describe('runtime resolution', { concurrent: false }, () => {
     const resolution = await resolutionOf(f)
     const key = '@deepseek-ai/dsh-app-boot/profile-resolution'
     const previous = getEnvironmentData(key)
-    const dispose = registerWorkerResolution(resolution)
+    const dispose = registerWorkerResolution(resolution, 'ja')
     try {
-      expect(getEnvironmentData(key)).toEqual({ resolution })
+      expect(getEnvironmentData(key)).toEqual({ resolution, locale: 'ja' })
     } finally {
       dispose()
     }

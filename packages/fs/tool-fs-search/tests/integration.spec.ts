@@ -109,6 +109,20 @@ describe('search tools over the real subprocess service + the packaged rg', () =
   })
 
   describe('grep', () => {
+    it('finds Japanese text in a Japanese path with spaces and punctuation without changing its name', async () => {
+      const parent = '日本語の資料'
+      const filename = "がくせい (最終)'2.txt"
+      await mkdir(join(dir, parent))
+      await writeFile(join(dir, parent, filename), '濁点がある日本語の本文\n', 'utf8')
+      const found = await call('glob', { pattern: '*.txt', path: parent }, agent())
+      expect(found.isError).toBe(false)
+      expect(text(found)).toContain(filename)
+      const result = await call('grep', { pattern: '日本語の本文', path: parent }, agent())
+      expect(result.isError).toBe(false)
+      expect(text(result)).toContain(`${join(parent, filename)}\nLine 1: 濁点がある日本語の本文`)
+      expect(existsSync(join(dir, parent, filename))).toBe(true)
+    })
+
     it('greps a directory tree with grouped, line-numbered output', async () => {
       const result = await call('grep', { pattern: 'alpha' }, agent())
       expect(result.isError).toBe(false)

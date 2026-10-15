@@ -1,4 +1,4 @@
-/** Typed English and Chinese copy owned by the Electron shell. */
+/** Typed English, Chinese, and Japanese copy owned by the Electron shell. */
 
 export const en = {
   cliCommandMenu: 'Manage dsh Command…',
@@ -341,15 +341,16 @@ export const zh = {
 
 /** Locale payload exposed to the Desktop-owned renderer. */
 export interface DesktopLocale {
-  readonly id: 'en' | 'zh-CN'
+  readonly id: 'en' | 'zh-CN' | 'ja-JP'
   readonly messages: DesktopMessages
 }
 
 /** Resolve Electron's locale to one shipped Desktop dictionary. */
 export function resolveDesktopLocale(locale: string): DesktopLocale {
-  return locale.toLowerCase().startsWith('zh')
-    ? { id: 'zh-CN', messages: zh }
-    : { id: 'en', messages: en }
+  const primary = locale.toLowerCase().split('-')[0]
+  if (primary === 'zh') return { id: 'zh-CN', messages: zh }
+  if (primary === 'ja') return { id: 'ja-JP', messages: ja }
+  return { id: 'en', messages: en }
 }
 
 /**
@@ -359,11 +360,11 @@ export function resolveDesktopLocale(locale: string): DesktopLocale {
  * @returns the supported dictionary, falling back to English.
  */
 export function resolveDesktopStartupLocale(preference: string | null, languages: readonly string[]): DesktopLocale {
-  const selected = preference?.toLowerCase()
-  if (selected === 'zh' || selected === 'en') return resolveDesktopLocale(selected)
+  const selected = preference?.toLowerCase().split('-')[0]
+  if (selected === 'zh' || selected === 'en' || selected === 'ja') return resolveDesktopLocale(selected)
   for (const language of languages) {
     const primary = language.toLowerCase().split('-')[0]
-    if (primary === 'zh' || primary === 'en') return resolveDesktopLocale(primary)
+    if (primary === 'zh' || primary === 'en' || primary === 'ja') return resolveDesktopLocale(primary)
   }
   return resolveDesktopLocale('en')
 }
@@ -392,4 +393,173 @@ export function desktopUpdateReadyConfirmation(
     message: formatDesktopMessage(messages.updateDownloadedTitle, { version }),
     detail: platform === 'win32' ? messages.updateDownloadedDetailWindows : messages.updateDownloadedDetail,
   }
+}
+
+/** Japanese dictionary, checked against the complete source key set. */
+export const ja: Record<keyof typeof en, string> = {
+  'cliCommandMenu': 'dsh コマンドを管理…',
+  'cliCommandTitle': 'dsh コマンドを管理',
+  'cliCommandLocation': 'デスクトップ版のコマンド：{path}',
+  'cliCommandSelected': '現在の dsh コマンド：{path}',
+  'cliCommandTarget': '現在のランチャーの参照先：{path}',
+  'cliCommandShadowed': '別の dsh が優先されています。デスクトップ版のコマンドを既定で使うには、そのインストールを削除するか優先順位を変更してください。デスクトップ版のコマンドを完全なパスで実行することもできます。',
+  'cliCommandSelectionUnknown': 'シェルのコマンドを確認できませんでした。エイリアスや別の dsh が優先されている可能性があります。',
+  'cliCommandInstalled': 'デスクトップ版のコマンドはインストール済みです。',
+  'cliCommandNotInstalled': 'デスクトップ版のコマンドをターミナルに追加します。',
+  'cliCommandBroken': 'デスクトップ版のコマンドの修復が必要です。',
+  'cliCommandInstall': 'インストール',
+  'cliCommandRepair': '修復',
+  'cliCommandRemove': '削除',
+  'cliCommandClose': '閉じる',
+  'cliCommandSwitch': 'デスクトップ版のコマンドで続行しますか？',
+  'cliCommandPreserve': '既存のコマンドは保持されます。他のインストールやシェルの起動ファイルは変更されません。',
+  'cliCommandContinue': '続行',
+  'cliCommandInstallApp': 'dsh コマンドを管理するには、まずデスクトップアプリをアプリケーションフォルダーにインストールしてください。',
+  'cliCommandUpdating': '更新をインストール中です。インストール完了後にコマンドを管理してください。',
+  'cliCommandNewTerminal': '新しいターミナルを開いて dsh --version を実行してください。',
+  'cliCommandRemoved': 'デスクトップ版のコマンド登録を削除しました。',
+  'cliCommandPreviousRestored': '以前のランチャーを復元しました。',
+  'cliCommandOtherKept': '他のコマンドのインストールは保持されています。',
+  'cliCommandBackupKept': '以前のランチャーは次の場所に保持されています：{path}',
+  'cliCommandChanged': 'このダイアログを開いている間にコマンドまたは PATH が変更されました。「dsh コマンドを管理」を開き直して現在の状態を確認してください。',
+  'cliCommandOwnershipError': 'コマンドの登録またはバックアップが変更されました。無関係なコマンドは削除していません。',
+  'cliCommandFailed': 'コマンドを更新できませんでした。アプリがインストールされていて、保存先に書き込めることを確認して再試行してください。',
+  'application': 'アプリケーション',
+  'fileMenu': 'ファイル',
+  'closePage': 'ページまたはウィンドウを閉じる',
+  'aboutMenu': 'DeepSeek Harness について',
+  'aboutProduct': 'DeepSeek Harness',
+  'aboutVersion': 'バージョン V{version}',
+  'hideApplication': 'DeepSeek Harness を非表示',
+  'hideOtherApplications': 'ほかを非表示',
+  'showAllApplications': 'すべてを表示',
+  'quitApplication': 'DeepSeek Harness を終了',
+  'openApplication': 'DeepSeek Harness を開く',
+  'quit': '終了',
+  'cancel': 'キャンセル',
+  'quitTitle': 'DeepSeek Harness を終了しますか？',
+  'quitActiveTasks': '実行中のタスクは中断されます。',
+  'quitScheduledTasks': 'アプリを閉じている間、予定されたタスクは実行されません。',
+  'quitActiveAndScheduledTasks': '実行中のタスクは中断され、アプリを閉じている間、予定されたタスクは実行されません。',
+  'backgroundNoticeBody': '実行中のタスクは継続します。システムトレイからウィンドウを開き直せます。',
+  'backgroundNoticeConfirm': '確認',
+  'edit': '編集',
+  'menuBar': 'アプリケーションメニュー',
+  'delete': '削除',
+  'undo': '取り消す',
+  'redo': 'やり直す',
+  'cut': '切り取り',
+  'copy': 'コピー',
+  'paste': '貼り付け',
+  'selectAll': 'すべて選択',
+  'startupFailed': 'DeepSeek Harness を利用できません',
+  'fatalSummary': 'アプリを起動できなかったか、予期せず停止しました。',
+  'startupAddressInUse': '別の DSH（dsh web やデスクトップアプリなど）が実行中のため同時に起動できません。他の DSH を終了してから再起動してください。',
+  'diagnosticTruncated': '…エラーの詳細を省略しました。',
+  'reportWrittenTo': '診断レポート：{path}',
+  'startupReinstallAdvice': 'アプリのファイルが不足・破損している場合は、アプリを終了して再インストールしてください。タスクは別の場所に保存されています。',
+  'exitApplication': '終了',
+  'restartApplication': '再起動',
+  'recoveryOperationFailed': '復旧操作に失敗しました',
+  'disableThirdPartyPlugins': 'サードパーティープラグインを無効化し、プロファイルのパッチをバックアップして再起動',
+  'welcomeTitle': 'DeepSeek Harness',
+  'welcomeBrand': 'DeepSeek Harness',
+  'welcomeTaglineBefore': 'ようこそ、',
+  'welcomeTaglineBrand': 'DeepSeek Harness',
+  'welcomeTaglineAfter': 'へ',
+  'welcomeDescription': '可能性を組み立て、知性を探求する。',
+  'welcomeAuthStarting': 'ログインを開いています…',
+  'welcomeAuthWaiting': 'ブラウザーが自動で開きませんか？',
+  'welcomeAuthWaitingDescription': 'ログインリンクをコピーし、ブラウザーで開いてログインしてください。',
+  'welcomeAuthExchanging': 'ログインを完了しています…',
+  'welcomeAuthExpired': 'ログインがタイムアウトしました',
+  'welcomeAuthExpiredDescription': '続行するには再度ログインしてください',
+  'welcomeAuthFailed': 'ログインを完了できませんでした。再試行してください。',
+  'welcomeAuthCopyLink': 'ログインリンクをコピー',
+  'welcomeAuthCopied': 'コピーしました',
+  'welcomeAuthCopyFailed': 'コピーできませんでした。再試行してください。',
+  'welcomeAuthCancel': 'キャンセル',
+  'welcomeAuthRetry': '再度ログイン',
+  'welcomeSignIn': 'ログイン',
+  'welcomeApiKey': 'API キーを追加',
+  'welcomeKeyTitle': 'API キーを追加して開始',
+  'welcomeKeyDescription': 'DeepSeek 公式モデルを設定して Harness の使用を開始します',
+  'welcomeKeyPlaceholder': 'API キーを入力',
+  'welcomeKeySave': '保存して続行',
+  'welcomeKeyLater': '後で設定',
+  'welcomeKeyBack': 'ログインに戻る',
+  'welcomeSessionExpired': 'ログアウトされました。再度ログインしてください。',
+  'welcomeKeyBlank': 'API キーを入力してください。',
+  'welcomeKeyInvalid': '引用符、空白、環境変数の代入を含めずに、API キーだけを入力してください。',
+  'welcomeKeyFailed': 'API キーを保存できませんでした。再試行してください。',
+  'welcomeContinueFailed': 'ワークスペースを開けませんでした。再試行してください。',
+  'checkUpdatesMenu': 'アップデートを確認…',
+  'reloadPageMenu': 'ページを再読み込み',
+  'restartAppHostMenu': 'アプリとホストを再起動',
+  'updateCheckFailedTitle': 'アップデートの確認に失敗',
+  'updateCheckFailed': 'アップデートを確認できませんでした。後で再試行してください。',
+  'updateDownloadFailed': 'アップデートをダウンロードできませんでした。再試行してください。',
+  'updateInstallFailed': 'アップデートをインストールできませんでした。後で再試行してください。',
+  'updateCheckNetworkFailed': 'アップデートを確認できませんでした。接続を確認して再試行してください。',
+  'updateDownloadNetworkFailed': 'アップデートをダウンロードできませんでした。接続を確認して再試行してください。',
+  'updateInstallNetworkFailed': 'アップデートをインストールできませんでした。接続を確認して再試行してください。',
+  'unknownError': '不明なエラー',
+  'updateCheckTitle': 'アップデートを確認',
+  'updateCurrentDetail': '現在のバージョン：{version}',
+  'updateCurrent': '最新のバージョンです',
+  'updateChecking': 'アップデートを確認中…',
+  'updateDownload': 'アップデートをダウンロード',
+  'updateDownloadedTitle': 'バージョン {version} のインストール準備ができました',
+  'updateDownloadedDetail': '更新中はアプリが終了し、完了後に自動で開きます。',
+  'updateDownloadedDetailWindows': '更新中はアプリが一時的に終了し、完了後に自動で開きます。\n\n更新には時間がかかる場合があります。インストール中はアプリを再度起動せずにお待ちください。',
+  'updateClose': '閉じる',
+  'updateAcknowledge': 'OK',
+  'updateLater': '後で更新',
+  'updateDownloading': '{percent}% ダウンロード中…',
+  'updateVerifying': '更新ファイルを検証中…',
+  'updateInstalling': '再起動の準備中…',
+  'updateRetry': 'アップデートを再試行',
+  'updateActiveTasks': '実行中のタスクがあります',
+  'updateActiveTasksDetail': '更新すると実行中のタスクを停止し、アプリを再起動します。続行しますか？',
+  'updateStopTasks': 'タスクを停止して更新',
+  'updateTasksChanged': '新しいタスクが開始されました。タスクを停止して更新するか、再度確認してください。',
+  'updateTasksUnavailable': 'タスクの状態を取得できません。ワークスペースの準備ができたら更新を再試行してください。',
+  'updateStopFailed': 'タスクを安全に停止できませんでした。更新はインストールされていません。後で再試行してください。',
+  'updateTechnicalDetails': '技術的な詳細を表示',
+  'updateTitle': 'DeepSeek Harness のアップデート',
+  'updateAvailable': '新しいバージョンがあります：{version}',
+  'updateDetail': 'ダウンロード完了後、更新をインストールしてアプリを再起動できます。',
+  'installAndRestart': 'インストールして再起動',
+  'later': '後で',
+  'updateFailedTitle': 'アップデートに失敗',
+  'mandatoryTitle': '更新して続行',
+  'mandatoryDetail': 'このバージョンはサポートが終了しています。更新して続行してください。インストールと再起動を確定するまで、実行中のタスクは継続します。',
+  'mandatoryUnavailable': '更新要件を確認できませんでした。後で再試行してください。',
+  'policyLoginTitle': 'テスト環境にログイン',
+  'policyLoginRequired': 'このテスト版の更新要件を確認するには、Feishu でログインしてください。ログインしても更新のダウンロードやインストールは行われません。',
+  'policyLogin': 'Feishu でログイン',
+  'policyLoginFailed': 'Feishu のログインが完了しませんでした。再試行してください。',
+  'policyLoginLoading': 'ログインページを読み込み中…',
+  'mandatoryNoRelease': '対応する更新が見つかりません。再度確認するか、サポートにお問い合わせください。',
+  'mandatoryRefresh': '再度確認',
+  'mandatoryPage': '公式サイトからダウンロード',
+  'mandatoryCopy': 'ダウンロードリンクをコピー',
+  'mandatoryPageFailed': '公式ダウンロードページを開けませんでした。リンクをコピーしてブラウザーで開いてください。',
+  'mandatoryActionFailed': '操作に失敗しました。再試行してください。更新完了後、アプリを再び使用できます。',
+  'mandatoryReady': '更新の準備ができました',
+  'mandatoryVersion': '新しいバージョン：{version}',
+  'mandatoryReadyDetail': '更新中はアプリが終了し、完了後に自動で開きます。',
+  'mandatoryDeferred': '実行中のタスクは継続します。アプリの操作を再開する前に更新を完了してください。',
+  'mandatoryContinue': '更新を続行',
+  'mandatoryInspecting': 'タスクを確認中…',
+  'mandatoryStopping': 'タスクを停止中…',
+  'mandatoryRestarting': 'まもなくアプリが再起動します。お待ちください。',
+  'mandatoryDownloadFailed': '更新ファイルをダウンロードまたは準備できませんでした。再試行してください。',
+  'mandatoryInstallFailed': '更新はインストールされていません。タスクを再度確認して再試行してください。',
+  'mandatoryOpenHelp': 'ページが開きませんか？',
+  'mandatoryReopen': '公式ダウンロードページを開き直す',
+  'mandatoryCopied': 'リンクをコピーしました',
+  'mandatoryCopyFailed': 'リンクをコピーできませんでした。下のリンクを選択してコピーしてください。',
+  'mandatoryAddress': 'ダウンロードリンク',
+  'mandatoryNotification': 'アプリに戻り、インストールと再起動を確定してください。',
 }

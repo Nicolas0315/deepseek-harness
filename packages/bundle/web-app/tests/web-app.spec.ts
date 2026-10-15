@@ -488,6 +488,7 @@ describe('web-app runtime glue', () => {
       '--input-type=module',
       '--eval', expect.stringContaining('await import('),
       '--', 'http://127.0.0.1:4567',
+      'browser operating-system launcher exited with code ',
     ])
     expect(args?.[2]).toContain("if (process.platform === 'win32')")
     expect(args?.[2]).toContain('launcher.ref()')

@@ -35,6 +35,8 @@ kind: "package-reference"
 
 已有配置将模块名 `@deepseek-ai/cordis-plugin-hmr` 替换为 `@deepseek-ai/dsh-hmr`。继续提供 `hmr` 服务键、`baseDir`、`config`、`getLinked()`、`getOuterStack()`、`hmr/change` 和 `hmr/reload`。工作区保留 vendored 包；DSH profile 使用本包。
 
+HMR 启动时按 [diagnostic-locale](../../util/diagnostic-locale/README.zh.md) 的优先级，从启动器环境确定诊断语言。重新加载消息支持英语、中文和日语。模块标识、路径、返回的重启原因以及编译器或插件的原始错误保留原值。
+
 ### 配置
 
 | 字段 | 默认值 | 含义 |

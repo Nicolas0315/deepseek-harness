@@ -17,7 +17,7 @@ import { DesktopMandatoryUpdatePolicy, resolveDesktopPolicyConfig } from '../../
 import { DesktopMandatoryUpdateWindow } from '../../lib/types/mandatory-update-window.js'
 import { DesktopUpdatePreparationError } from '../../lib/types/update-error.js'
 import { DesktopUpdateHttpExecutor } from '../../lib/types/update-http-executor.js'
-import { qualifyUpdateDialogs } from './update-dialogs.mjs'
+import { captureRenderedWindow, qualifyUpdateDialogs } from './update-dialogs.mjs'
 
 const root = process.env.DSH_LOCAL_UPDATE_TEST_ROOT
 assert.ok(root, 'The launcher must allocate a private test root')
@@ -30,9 +30,12 @@ const presentations = []
 let screenshot = { captured: false, reason: 'not attempted' }
 let dialogScreenshots = []
 const { NsisUpdater } = updaterModule
-const messages = resolveDesktopLocale('zh-CN').messages
+const requestedLocale = process.env.DSH_LOCAL_UPDATE_TEST_LOCALE ?? 'zh-CN'
+const locale = resolveDesktopLocale(requestedLocale)
+const messages = locale.messages
 
 async function main() {
+  assert.ok(['en', 'zh-CN', 'ja-JP'].includes(requestedLocale), 'DSH_LOCAL_UPDATE_TEST_LOCALE must be en, zh-CN, or ja-JP')
   await app.whenReady()
   const server = await createUpdateServer()
   let serial = 0
@@ -224,7 +227,7 @@ async function main() {
       assert.equal(f.states.length, 0)
     })
     await scenario('ordinary-real-dialog-cancel-and-explicit-install', async () => {
-      dialogScreenshots = await qualifyUpdateDialogs(root, fixture)
+      dialogScreenshots = await qualifyUpdateDialogs(root, fixture, locale)
     })
     await scenario('mandatory-real-window-policy-download-retry-and-clear', async () => {
       protocol.handle('dsh-app', async request => {
@@ -235,17 +238,16 @@ async function main() {
         return new Response(await readFile(new URL(`../../renderer/${path}`, import.meta.url)), { headers: { 'content-type': mime } })
       })
       const parent = new BrowserWindow({ show: true, width: 900, height: 650, webPreferences: { preload: fileURLToPath(new URL('../../lib/preload-app.cjs', import.meta.url)), sandbox: true, contextIsolation: true } })
-      await parent.loadURL('dsh-app://app/')
       const f = await fixture('hold-download')
       const config = resolveDesktopPolicyConfig({ origin: server.url, allowedPageOrigins: ['https://downloads.example.com'],
         intervalMs: 600_000, timeoutMs: 1000 }, true)
       let modal
       const policy = new DesktopMandatoryUpdatePolicy(config, { platform: 'win32', arch: 'x64', bundledDshVersion: '1.0.0' },
         () => { modal?.sync() }, undefined,
-        () => ({ version: '1.0.0', locale: 'zh-CN', timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60 }))
+        () => ({ version: '1.0.0', locale: locale.id, timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60 }))
       modal = new DesktopMandatoryUpdateWindow({
         preload: fileURLToPath(new URL('../../lib/preload-mandatory.cjs', import.meta.url)),
-        locale: resolveDesktopLocale('zh-CN'), allowedPageOrigins: config.allowedPageOrigins,
+        locale, allowedPageOrigins: config.allowedPageOrigins,
         parent: () => parent, policy: () => policy.state, update: () => f.coordinator.state,
         refresh: async () => { await Promise.all([policy.check('manual', true), f.coordinator.check(true)]); modal.sync() },
         download: async version => { const pending = f.coordinator.download(version); await Promise.resolve(); modal.sync();
@@ -253,6 +255,7 @@ async function main() {
           return state.phase === 'ready' ? f.coordinator.install(version) : state },
         install: async version => { const state = await f.coordinator.install(version); modal.sync(); return state },
       })
+      await parent.loadURL('dsh-app://app/')
       const originalOpen = shell.openExternal
       f.restart(() => modal.confirm(f.coordinator.state.version, true))
       const originalRead = clipboard.readText
@@ -285,6 +288,7 @@ async function main() {
           }
         }
         await until("document.getElementById('title')?.textContent === '需要更新'")
+        assert.equal(await contents.executeJavaScript('document.documentElement.lang'), locale.id)
         assert.equal(await contents.executeJavaScript("document.querySelector('#title b') === null"), true)
         if (process.platform === 'win32') {
           assert.equal(window, parent)
@@ -294,11 +298,11 @@ async function main() {
         assert.equal(window.isDestroyed(), false)
         assert.equal(f.installations.length, 0)
         await contents.executeJavaScript("document.getElementById('page').click()")
-        await until("document.getElementById('browser-message').textContent.includes('无法打开浏览器')")
+        await until(`document.getElementById('browser-message').textContent === ${JSON.stringify(messages.mandatoryPageFailed)}`)
         assert.deepEqual(opened, ['https://downloads.example.com/desktop'])
         await contents.executeJavaScript("document.getElementById('copy').click()")
         await copyComplete.promise
-        await until("document.getElementById('copy').textContent === '已复制链接'")
+        await until(`document.getElementById('copy').textContent === ${JSON.stringify(messages.mandatoryCopied)}`)
         assert.deepEqual(copied, opened)
         await f.coordinator.check()
         modal.sync()
@@ -308,7 +312,7 @@ async function main() {
         assert.equal(f.coordinator.state.phase, 'downloading')
         assert.equal(await contents.executeJavaScript("document.getElementById('page').hidden"), true)
         server.release()
-        await until("document.getElementById('update').textContent === '停止任务并更新' && !document.getElementById('update').disabled")
+        await until(`document.getElementById('update').textContent === ${JSON.stringify(messages.updateStopTasks)} && !document.getElementById('update').disabled`)
         assert.equal(f.installations.length, 0)
         assert.equal(modal.confirmationWindow, window)
         server.policy('stall')
@@ -320,17 +324,14 @@ async function main() {
           status: document.getElementById('status').textContent, version: document.getElementById('version').textContent,
           buttons: [...document.querySelectorAll('button')].filter(button => button.getClientRects().length > 0).map(button => button.textContent),
         })`)
-        assert.deepEqual(snapshot, JSON.parse(await readFile(new URL('../expected/mandatory-update-zh.json', import.meta.url), 'utf8')))
+        const expectedLocale = locale.id === 'zh-CN' ? 'zh' : locale.id
+        assert.deepEqual(snapshot, JSON.parse(await readFile(new URL(`../expected/mandatory-update-${expectedLocale}.json`, import.meta.url), 'utf8')))
         await contents.executeJavaScript("document.getElementById('later').click()")
-        await until("document.getElementById('update').textContent === '继续安装更新' && !document.getElementById('update').disabled")
+        await until(`document.getElementById('update').textContent === ${JSON.stringify(messages.mandatoryContinue)} && !document.getElementById('update').disabled`)
         assert.equal(f.installations.length, 0)
-        let capture
-        try { capture = await window.webContents.capturePage() }
-        catch (error) { screenshot = { captured: false, reason: String(error) } }
-        if (capture !== undefined) {
-          await writeFile(join(root, 'mandatory-update.png'), capture.toPNG())
-          screenshot = { captured: true }
-        }
+        const capture = await captureRenderedWindow(window, 'mandatory-update.png', contents)
+        await writeFile(join(root, 'mandatory-update.png'), capture.toPNG())
+        screenshot = { captured: true }
         const restartRequested = Promise.withResolvers()
         f.restart(async () => { restartRequested.resolve(); return false })
         await contents.executeJavaScript("document.getElementById('update').click()")
@@ -338,7 +339,7 @@ async function main() {
         await until("!document.getElementById('update').disabled")
         assert.equal(f.installations.length, 0)
         assert.equal(policy.state.blocking, true)
-        f.restart(async () => { throw new DesktopUpdatePreparationError('stop-failed', resolveDesktopLocale('zh-CN').messages.updateStopFailed,
+        f.restart(async () => { throw new DesktopUpdatePreparationError('stop-failed', messages.updateStopFailed,
           'exit 0; shutdown acknowledged false') })
         await contents.executeJavaScript("document.getElementById('update').click()")
         await until("!document.getElementById('technical-details').hidden && !document.getElementById('update').disabled")
@@ -348,7 +349,7 @@ async function main() {
             assert.equal(await contents.executeJavaScript("document.getElementById('technical-details-label').click(); document.getElementById('technical-details').open"), true)
           }
           const name = expanded ? 'mandatory-error-expanded.png' : 'mandatory-error-collapsed.png'
-          await writeFile(join(root, name), (await window.webContents.capturePage()).toPNG())
+          await writeFile(join(root, name), (await captureRenderedWindow(window, name, contents)).toPNG())
           dialogScreenshots.push(name)
         }
         assert.equal(policy.state.blocking, true)
@@ -375,9 +376,9 @@ async function main() {
       }
     })
     assert.deepEqual(server.failures, [])
-    console.log(`LOCAL_UPDATER_RESULT=${JSON.stringify({ cases, presentations, actualElectron: process.versions.electron,
+    console.log(`LOCAL_UPDATER_RESULT=${JSON.stringify({ locale: locale.id, cases, presentations, actualElectron: process.versions.electron,
       actualTransport: 'DesktopUpdateHttpExecutor (ElectronHttpExecutor)', installerExecuted: false, screenshot, requests: server.requests.length })}`)
-    await writeFile(join(root, 'result.json'), `${JSON.stringify({ cases, presentations, installerExecuted: false, screenshot, dialogScreenshots }, null, 2)}\n`)
+    await writeFile(join(root, 'result.json'), `${JSON.stringify({ locale: locale.id, cases, presentations, installerExecuted: false, screenshot, dialogScreenshots }, null, 2)}\n`)
   } finally {
     for (const f of fixtures) f.coordinator.dispose()
     await server.close()

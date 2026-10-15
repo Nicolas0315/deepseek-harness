@@ -30,6 +30,8 @@ preview = render_images("report.docx", "report-preview", pages=[1])
 
 Python SDK 没有独立的应用入口。它以 `--profile sdk` 启动内置的 `dsh` CLI（命令行界面）；所选 profile 负责 JSON-RPC 服务器、agent（智能体）组合、凭据、持久化、工具和关闭流程。
 
+`HarnessConfig` 和 `DeepSeekHarnessConfig` 接受 `language="en"`、`language="zh"` 或 `language="ja"`。每个客户端依次使用该选项、继承环境与 `env` 合并后首个非空的 `DSH_LANG`、`LC_ALL`、`LC_MESSAGES` 或 `LANG`，最后使用系统区域设置。主语言为 `zh` 的区域设置（包括 `zh-CN` 和 `zh_CN.UTF-8`）选择中文；主语言为 `ja` 的区域设置（包括 `ja-JP` 和 `ja_JP.UTF-8`）选择日语，其他值选择英语。所选语言用于 SDK 诊断，并通过 `DSH_LANG` 传给子进程，不修改调用方环境。异常类型、JSON-RPC 代码和数据、方法、事件字段、模型输出和外部诊断保留原值。独立 Office 操作通过 `OfficeOptions(language="zh", env={...})` 单独配置；`env` 在资源查找和子进程中覆盖继承的环境变量，`language` 同时选择本地诊断语言。这些选项不会转换为 CLI 参数。
+
 每次启动都必须显式指定 Harness home。请传入 `dsh_home`，或在子进程环境中提供非空的 `DSH_HOME`。SDK 刻意不会发现 `~/.dsh`。
 
 ```py

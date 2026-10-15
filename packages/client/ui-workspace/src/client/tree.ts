@@ -549,7 +549,7 @@ export function deriveSearchResults(
   content: { items: readonly SessionSearchResultItem[]; hasMore: boolean },
   limit: number,
 ): SearchResultSet {
-  const q = query.trim().toLowerCase()
+  const q = query.trim().normalize('NFKC').toLowerCase()
   if (q === '') return { items: [], hasMore: false }
   const archived = new Set(archivedSessionIds)
   const current = mainSessionId(list)
@@ -574,8 +574,8 @@ export function deriveSearchResults(
     // localized, so matching it would tie search to one language).
     if (summary === undefined || summary.blank || !sessionVisible(summary, current, archived, archivedFilter)) continue
     if (
-      sessionTitle(summary).toLowerCase().includes(q)
-      || labelOf(summary).toLowerCase().includes(q)
+      sessionTitle(summary).normalize('NFKC').toLowerCase().includes(q)
+      || labelOf(summary).normalize('NFKC').toLowerCase().includes(q)
     ) {
       local.push(summary)
     }

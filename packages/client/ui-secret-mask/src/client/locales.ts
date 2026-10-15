@@ -26,3 +26,9 @@ export const en = {
   'secret.reveal': 'Show secret',
   'secret.hide': 'Hide secret',
 } satisfies Record<SecretMaskKey, string>
+
+/** Japanese dictionary, checked complete against the zh key set. */
+export const ja = {
+  'secret.reveal': '秘密情報を表示',
+  'secret.hide': '秘密情報を隠す',
+} satisfies Record<SecretMaskKey, string>

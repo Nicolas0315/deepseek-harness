@@ -98,3 +98,9 @@ it.each(['missing', 'directory'])('refuses an unavailable bundle patch: %s', (ki
   if (kind === 'directory') mkdirSync(patch)
   expect(() => officialBundleInstallTarget(name, anchor, version)).toThrow('bundle patch')
 })
+
+it('uses the caller language when a source checkout is incomplete', () => {
+  const { root, anchor } = fixture()
+  rmSync(join(root, 'package.json'))
+  expect(() => officialBundleInstallTarget(name, anchor, version, 'ja')).toThrow(`公式バンドル ${name}: DSH のソースインストール ${anchor} にはワークスペース全体のチェックアウトが必要です`)
+})

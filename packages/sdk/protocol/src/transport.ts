@@ -6,6 +6,8 @@
  * @module @deepseek-ai/dsh-sdk-protocol/transport
  */
 
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
+import { diagnostics, defaultDiagnosticLocale } from './diagnostics.ts'
 import { randomUUID } from 'node:crypto'
 import type { Readable, Writable } from 'node:stream'
 import { StringDecoder } from 'node:string_decoder'
@@ -67,9 +69,15 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
   private notificationHandler: NotificationHandler | undefined
   private readonly pending = new Map<JsonRpcId, PendingRequest>()
 
+  /**
+   * @param input - caller-owned incoming byte stream.
+   * @param output - caller-owned outgoing byte stream.
+   * @param language - endpoint diagnostic language; omitted captures the process locale.
+   */
   constructor(
     private readonly input: Readable,
     private readonly output: Writable,
+    private readonly language: DiagnosticLocale = defaultDiagnosticLocale(),
   ) {}
 
   /** Attach the input listeners and begin reading frames. Idempotent. */
@@ -88,7 +96,7 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
     this.input.off('data', this.onData)
     this.input.off('error', this.onInputError)
     this.input.off('end', this.onInputEnd)
-    this.failPending(new Error('JSON-RPC transport closed'))
+    this.failPending(new Error(diagnostics[this.language].closed()))
   }
 
   /**
@@ -125,12 +133,12 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
       let detach = (): void => {}
       if (signal !== undefined) {
         if (signal.aborted) {
-          reject(abortError(signal.reason))
+          reject(abortError(signal.reason, this.language))
           return
         }
         const onAbort = (): void => {
           this.pending.delete(id)
-          reject(abortError(signal.reason))
+          reject(abortError(signal.reason, this.language))
         }
         signal.addEventListener('abort', onAbort, { once: true })
         detach = () => { signal.removeEventListener('abort', onAbort) }
@@ -195,7 +203,7 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
   private readonly onInputEnd = (): void => {
     this.buffer += this.decoder.end()
     this.drainLines()
-    this.failPending(new Error('JSON-RPC input closed'))
+    this.failPending(new Error(diagnostics[this.language].inputClosed()))
   }
 
   private async handleLine(line: string): Promise<void> {
@@ -226,7 +234,7 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
   private async handleIncomingRequest(id: JsonRpcId, method: string, params: Record<string, unknown>): Promise<void> {
     const handler = this.requestHandler
     if (!handler) {
-      this.writeError(id, -32601, `method not found: ${method}`)
+      this.writeError(id, -32601, diagnostics[this.language].method(method))
       return
     }
     try {
@@ -245,7 +253,7 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
       const error = frame.error as Record<string, unknown>
       pending.reject(new JsonRpcResponseError(
         typeof error.code === 'number' ? error.code : undefined,
-        typeof error.message === 'string' ? error.message : 'JSON-RPC error',
+        typeof error.message === 'string' ? error.message : diagnostics[this.language].error(),
         error.data,
       ))
       return
@@ -274,6 +282,6 @@ function objectParams(params: unknown): Record<string, unknown> {
 }
 
 /** Normalize an abort reason into the rejection Error (a non-Error reason is stringified). */
-function abortError(reason: unknown): Error {
-  return reason instanceof Error ? reason : new Error(`JSON-RPC request aborted: ${String(reason)}`)
+function abortError(reason: unknown, language: DiagnosticLocale): Error {
+  return reason instanceof Error ? reason : new Error(diagnostics[language].aborted(String(reason)))
 }

@@ -13,6 +13,8 @@ import {
 } from '@deepseek-ai/dsh-app-boot'
 import type {} from '@deepseek-ai/dsh-cmdline'
 import { handleError } from './error.ts'
+import { hmrMessages, resolveHmrLocale, type HmrMessages } from './diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import { PackageManifests } from './package-manifest.ts'
 import { ModuleFiles } from './module-files.ts'
 import type {} from '@deepseek-ai/cordis-plugin-timer'
@@ -93,7 +95,7 @@ export interface Reload {
 class EntryNamespaces {
   private readonly names = new Map<string, Set<unknown>>()
 
-  constructor(private internal: ModuleLoader, private moduleUrls: ReadonlyMap<unknown, string>) {}
+  constructor(private internal: ModuleLoader, private moduleUrls: ReadonlyMap<unknown, string>, private messages: HmrMessages) {}
 
   static getModuleUrls(internal: ModuleLoader): Map<unknown, string> {
     const moduleUrls = new Map<unknown, string>()
@@ -133,7 +135,7 @@ class EntryNamespaces {
       }
     }
     const url = this.moduleUrls.get(moduleNamespace)
-    if (url === undefined) throw new Error(`HMR cannot locate the loaded module for ${name} from ${baseUrl}`)
+    if (url === undefined) throw new Error(this.messages.moduleMissing(name, baseUrl))
     return { url }
   }
 }
@@ -149,6 +151,8 @@ type ReloadModule = { filename: string; moduleNamespace: unknown; plugin: Plugin
 
 /** Entry modules belonging to one runtime, keyed by their original namespaces across replacement. */
 class ReloadModules {
+  constructor(private messages: HmrMessages) {}
+
   private readonly modules = new Map<unknown, ReloadModule>()
 
   static include(reloads: ReadonlyMap<Plugin, Reload>, plugin: Plugin, job: ModuleJob, runtime: Plugin.Runtime | undefined): boolean {
@@ -160,14 +164,14 @@ class ReloadModules {
   }
 
   add(job: ModuleJob, plugin: Plugin): this {
-    assert(job.module, `HMR pending module is missing: ${job.url}`)
+    assert(job.module, this.messages.pendingMissing(job.url))
     const moduleNamespace: unknown = job.module.getNamespace()
     this.modules.set(moduleNamespace, { filename: job.url, moduleNamespace, plugin })
     return this
   }
 
   async importRemaining(loader: Context['loader'], getOuterStack: () => string[], primary: ReloadModule): Promise<ReloadModules> {
-    const replacements = new ReloadModules()
+    const replacements = new ReloadModules(this.messages)
     for (const [originalNamespace, { filename }] of this.modules) {
       if (filename === primary.filename) {
         replacements.modules.set(originalNamespace, primary)
@@ -192,7 +196,7 @@ class ReloadModules {
     for (const [previousFiber, implementation] of implementations) {
       if (previousFiber.fiber.parent.fiber.uid === null) continue
       if (previousFiber.entry === undefined && callbacks.size > 1) {
-        throw new Error('HMR replacement is ambiguous for a plugin instance without a Loader entry')
+        throw new Error(this.messages.ambiguous)
       }
       yield [previousFiber, implementation]
     }
@@ -228,6 +232,8 @@ class Hmr extends Service {
   public baseDir: string
 
   private readonly ownerContext: Context
+  private readonly language: DiagnosticLocale
+  private readonly messages: HmrMessages
   private internal: ModuleLoader
   private watcher: FSWatcher | undefined
 
@@ -266,9 +272,9 @@ class Hmr extends Service {
    * @returns The operation result after its asynchronous work completes.
    */
   runExclusive<T>(operation: () => Promise<T>): Promise<T> {
-    if (this.executing.getStore()) return Promise.reject(new Error('HMR transactions cannot be nested'))
+    if (this.executing.getStore()) return Promise.reject(new Error(this.messages.nested))
     const task = this.operations.then(async () => {
-      if (this.closing) throw new Error('HMR is disposed')
+      if (this.closing) throw new Error(this.messages.disposed)
       return this.executing.run(true, operation)
     })
     this.operations = task.catch(() => {})
@@ -288,11 +294,11 @@ class Hmr extends Service {
    */
   async watchConfig(filename: string, refresh: () => Promise<void>): Promise<() => Promise<void>> {
     const paths = [resolve(filename), canonicalPath(filename)]
-    if (paths.some(path => this.configPaths.has(path))) throw new Error(`config path already registered: ${filename}`)
+    if (paths.some(path => this.configPaths.has(path))) throw new Error(this.messages.registered(filename))
     for (const path of paths) this.configPaths.add(path)
     try {
       const dispose = await this.executing.exit(() => watchExactConfig(
-        this.ownerContext, filename, this.config, () => this.runReload(refresh), () => this.executing.getStore() === true,
+        this.ownerContext, filename, this.config, () => this.runReload(refresh), () => this.executing.getStore() === true, this.language,
       ))
       return async () => {
         await dispose()
@@ -307,8 +313,10 @@ class Hmr extends Service {
   constructor(ctx: Context, public config: HmrConfig) {
     super(ctx, 'hmr')
     this.ownerContext = ctx
+    this.language = resolveHmrLocale(ctx)
+    this.messages = hmrMessages(this.language)
     if (!this.ctx.loader.internal) {
-      throw new Error('--expose-internals is required for HMR service')
+      throw new Error(this.messages.internals)
     }
     this.internal = this.ctx.loader.internal
     this.baseDir = fileURLToPath(new URL(config.base || '.', ctx.baseUrl))
@@ -367,7 +375,7 @@ class Hmr extends Service {
     const profile = this.ownerContext.get('profileContext')
     if (profile !== undefined) {
       const ready = this.ownerContext.get('appReady')
-      if (ready === undefined) throw new Error('Profile HMR requires application readiness')
+      if (ready === undefined) throw new Error(this.messages.readiness)
       const started = Promise.withResolvers<boolean>()
       this.applicationReady = started.promise
       const unsubscribe = ready.onReady(() => {
@@ -386,7 +394,7 @@ class Hmr extends Service {
       let lastInputs: string | undefined
       let lastBundles = JSON.stringify(profile.startedBundles)
       const refresh = async (manifestOnly: boolean): Promise<void> => {
-        const bundles = JSON.stringify(readProfileManifest('dsh', profile.dir).dsh?.profile?.bundles ?? [])
+        const bundles = JSON.stringify(readProfileManifest('dsh', profile.dir, this.language).dsh?.profile?.bundles ?? [])
         if (manifestOnly && bundles === lastBundles) return
         const inputs = JSON.stringify([bundles, ...patchFiles.map((filename) => {
           try { return readFileSync(filename, 'utf8') }
@@ -397,8 +405,8 @@ class Hmr extends Service {
         })])
         if (inputs === lastInputs) return
         const { warnings, pending, restartReason } = await this.reconcileProfile()
-        if (restartReason !== undefined) this.ctx.logger.warn('restart required: %s', restartReason)
-        if (pending.length > 0) this.ctx.logger.warn('changed modules keep running their previous code until a restart: %o', pending)
+        if (restartReason !== undefined) this.ctx.logger.warn(this.messages.restart, restartReason)
+        if (pending.length > 0) this.ctx.logger.warn(this.messages.previous, pending)
         lastInputs = inputs
         lastBundles = bundles
         for (const diagnostic of warnings) this.ctx.logger.warn(diagnostic)
@@ -410,9 +418,9 @@ class Hmr extends Service {
     const { loader } = this.ctx
     const { root, ignored } = this.config
     if (!this.config.base) {
-      this.ctx.logger.info('watching %o', root)
+      this.ctx.logger.info(this.messages.watching, root)
     } else {
-      this.ctx.logger.info('watching %o in %s', root, this.baseDir)
+      this.ctx.logger.info(this.messages.watchingIn, root, this.baseDir)
     }
 
     const match = picomatch(ignored)
@@ -589,8 +597,8 @@ class Hmr extends Service {
     const nameMap = new Map<string, EntryNamespaces>()
     for (const entry of this.ctx.loader.entries()) {
       const baseUrl = entry.parent.tree.ctx.baseUrl
-      if (baseUrl === undefined) throw new Error('HMR entry tree has no base URL')
-      const names = nameMap.get(baseUrl) ?? new EntryNamespaces(this.internal, moduleUrls)
+      if (baseUrl === undefined) throw new Error(this.messages.baseMissing)
+      const names = nameMap.get(baseUrl) ?? new EntryNamespaces(this.internal, moduleUrls, this.messages)
       names.add(entry.options.name, entry.moduleNamespace)
       nameMap.set(baseUrl, names)
     }
@@ -630,7 +638,7 @@ class Hmr extends Service {
       reloads.set(plugin, {
         filename: job.url,
         runtime,
-        modules: new ReloadModules().add(job, plugin),
+        modules: new ReloadModules(this.messages).add(job, plugin),
       })
     }
 
@@ -666,7 +674,7 @@ class Hmr extends Service {
         attempts.push({ ...generation, replacement, replacements, activated: [] })
       }
     } catch (e) {
-      handleError(this.ctx, e)
+      handleError(this.ctx, e, this.language)
       rollback()
       throw e
     }
@@ -674,7 +682,7 @@ class Hmr extends Service {
     const reload = async (
       plugin: Plugin,
       fibers: (typeof generations)[number]['fibers'],
-      replacements = new ReloadModules(),
+      replacements = new ReloadModules(this.messages),
       activated: Fiber[] = [],
     ) => {
       for (const [previousFiber, implementation] of replacements.getActiveImplementations(this.ctx, plugin, fibers)) {
@@ -699,15 +707,15 @@ class Hmr extends Service {
           this.ctx.registry.delete(plugin)
           await Promise.all(fibers.map(({ fiber }) => fiber.await()))
         } catch (err) {
-          this.ctx.logger.warn('failed to dispose plugin at %C', path)
+          this.ctx.logger.warn(this.messages.disposeFailed, path)
           this.ctx.logger.warn(err)
         }
 
         try {
           await reload(replacement, fibers, replacements, activated)
-          this.ctx.logger.info('reload plugin at %C', path)
+          this.ctx.logger.info(this.messages.reload, path)
         } catch (err) {
-          this.ctx.logger.warn('failed to reload plugin at %C', path)
+          this.ctx.logger.warn(this.messages.reloadFailed, path)
           this.ctx.logger.warn(err)
           throw err
         }
@@ -903,7 +911,7 @@ class Hmr extends Service {
     try {
       return await operation()
     } catch (error) {
-      this.ctx.logger.warn('%s failed; module replacement was not completed', step)
+      this.ctx.logger.warn(this.messages.stepFailed, step)
       this.ctx.logger.warn(error)
       return fallback
     }
@@ -923,9 +931,9 @@ class Hmr extends Service {
    * replacement plugin that fails to load or start, whose previous code no longer runs.
    */
   async reconcileProfile(requiredIds: readonly string[] = []): Promise<ProfileReconciliation> {
-    if (this.executing.getStore() !== true) throw new Error('HMR profile reconciliation must run inside runExclusive')
+    if (this.executing.getStore() !== true) throw new Error(this.messages.exclusive)
     const profile = this.ownerContext.get('profileContext')
-    if (profile === undefined) throw new Error('HMR profile reconciliation requires profileContext')
+    if (profile === undefined) throw new Error(this.messages.profile)
     // Entries this recomposition stops start again, and fail it when they cannot.
     const running = [...this.ctx.loader.entries()].filter(entry => entry.fiber?.state === FiberState.ACTIVE)
     // Read while the packages are still on disk, so a removed link's target is known in its real spellings.
@@ -934,10 +942,10 @@ class Hmr extends Service {
     let comparedAt = 0
     let pending: PendingModule[] = []
     try {
-      const patches = readProfilePatches('dsh', profile)
+      const patches = readProfilePatches('dsh', profile, undefined, this.language)
       comparedAt = this.files.now()
       // A failed comparison keeps every record, so the next recomposition compares the same modules again.
-      comparison = await this.contained('comparing loaded modules with disk', () => {
+      comparison = await this.contained(this.messages.compare, () => {
         const roots = profileRoots(profile.dir)
         return Promise.resolve({ roots, ...this.files.compare(this.profileModules(roots)) })
       }, undefined)
@@ -946,7 +954,7 @@ class Hmr extends Service {
       const compared = comparison
       const unavailable = !this.hasEsmCache()
       if (!unavailable && compared !== undefined && pending.length > 0) {
-        pending = await this.contained('planning module replacement', async () => {
+        pending = await this.contained(this.messages.plan, async () => {
           const plan = await this.planReplacement(compared.stale, compared.roots)
           await this.stopPlanned(plan)
           return plan.pending
@@ -954,7 +962,7 @@ class Hmr extends Service {
       }
       // Modules whose links or evaluation failed are evicted, so the recomposition retries failed imports against a
       // corrected file or a dependency installed since.
-      await this.contained('expiring failed imports', () => {
+      await this.contained(this.messages.expire, () => {
         // Without an ES module cache no failed module is known.
         if (unavailable) return
         const roots = compared?.roots ?? [realpathSync(profile.dir) + sep]
@@ -971,11 +979,11 @@ class Hmr extends Service {
       return { warnings: result.warnings, pending, ...restartReason === undefined ? {} : { restartReason } }
     } finally {
       const recorded = comparison
-      await this.contained('evicting dropped packages', () => {
+      await this.contained(this.messages.evict, () => {
         const kept = mappedDirectories(this.ownerContext.get('pluginPackages')?.resolution)
         return this.evictDropped([...mapped].filter(dir => !kept.has(dir)), kept)
       }, undefined)
-      await this.contained('recording loaded module files', () => {
+      await this.contained(this.messages.record, () => {
         if (recorded === undefined) return
         // Identities read before replacement keep writes made since then detectable.
         const urls = this.profileModules(recorded.roots)

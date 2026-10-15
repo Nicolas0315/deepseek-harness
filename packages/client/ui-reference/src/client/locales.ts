@@ -58,3 +58,23 @@ export const en = {
   'time.months': '{n}mo',
   'time.years': '{n}y',
 } satisfies Record<ReferenceKey, string>
+
+
+/** Japanese dictionary, checked against the complete source key set. */
+export const ja: Record<keyof typeof en, string> = {
+  'fileOpen.title': 'ファイルを開けませんでした',
+  'fileOpen.failed': '「{path}」を開けませんでした。再試行するか、このメッセージを閉じてください。',
+  'fileOpen.close': '閉じる',
+  'fileOpen.retry': '再試行',
+  'section.files': 'ファイルとフォルダー',
+  'section.subagents': 'サブエージェント',
+  'section.sessions': 'セッション',
+  'candidate.noCwd': '（作業ディレクトリなし）',
+  'crumb.root': 'ワークスペース',
+  'time.now': '今',
+  'time.minutes': '{n}分',
+  'time.hours': '{n}時間',
+  'time.days': '{n}日',
+  'time.months': '{n}か月',
+  'time.years': '{n}年',
+}

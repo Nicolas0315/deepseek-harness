@@ -16,6 +16,9 @@
     },
     {
       "path": "../../boot/cmdline"
+    },
+    {
+      "path": "../../util/diagnostic-locale"
     }
   ]
 }

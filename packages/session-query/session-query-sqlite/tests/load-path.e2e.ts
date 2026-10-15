@@ -12,7 +12,8 @@ import SessionStore, { SessionSeq, SESSION_FORMAT_VERSION, SessionId } from '@de
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SqliteSessionQueryEngine, * as queryModule from '@deepseek-ai/dsh-session-query-sqlite'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -47,24 +48,56 @@ describe('dsh-session-query-sqlite real Loader path', () => {
     expect(unwrapped).toBe(SqliteSessionQueryEngine)
     const query = await ctx.plugin(unwrapped, { path: searchPath })
 
-    const id = SessionId('loader-path')
-    const writer = await ctx.sessionPersistence.create({ version: SESSION_FORMAT_VERSION, id, createdAt: 10, isSeeded: false })
-    await writer.append([{
-      type: 'user/message',
-      seq: SessionSeq(0),
-      time: 10,
-      data: createUserMessage({
-        content: [{ type: 'text', text: 'real Loader needle' }], source: { kind: 'user' },
-      }),
-      surfaceOp: 'append',
-    }])
-    await writer.close()
+    try {
+      const id = SessionId('loader-path')
+      const text = 'real Loader needle。これは日本語の文章です。ｶﾞｲﾄﾞでAPIを使う。'
+      const writer = await ctx.sessionPersistence.create({ version: SESSION_FORMAT_VERSION, id, createdAt: 10, isSeeded: false })
+      try {
+        await writer.append([{
+          type: 'user/message',
+          seq: SessionSeq(0),
+          time: 10,
+          data: createUserMessage({
+            content: [{ type: 'text', text }], source: { kind: 'user' },
+          }),
+          surfaceOp: 'append',
+        }])
+      } finally {
+        await writer.close()
+      }
 
-    await expect(ctx.sessionQuery.searchSessions({ query: 'Loader needle' }))
-      .resolves.toMatchObject({ items: [{ header: { id }, persisted: true, live: false }] })
-    await expect(ctx.sessionQuery.listSessions())
-      .resolves.toMatchObject([{ header: { id }, persisted: true, live: false }])
-    await query.dispose()
-    await persistence.dispose()
+      const files = (await readdir(persistenceRoot, { recursive: true })).filter(path => path.endsWith('.jsonl')).sort()
+      const before = await Promise.all(files.map(path => readFile(join(persistenceRoot, path), 'utf8')))
+      expect(before.length).toBe(1)
+      await expect(ctx.sessionQuery.searchSessions({ query: 'Loader needle' }))
+        .resolves.toMatchObject({ items: [{ header: { id }, persisted: true, live: false }] })
+      await expect(ctx.sessionQuery.listSessions())
+        .resolves.toMatchObject([{ header: { id }, persisted: true, live: false }])
+      for (const term of ['日本語', '本', 'ガイド', 'API', 'APIを使う']) {
+        await expect(ctx.sessionQuery.searchSessions({ query: term }))
+          .resolves.toMatchObject({ items: [{ header: { id }, bestMatch: { snippet: text } }] })
+        await expect(ctx.sessionQuery.searchEvents({ sessionId: id, query: term }))
+          .resolves.toMatchObject({ items: [{ snippet: text }] })
+      }
+      await query.dispose()
+      const oldIndex = new DatabaseSync(searchPath)
+      try {
+        oldIndex.exec('PRAGMA user_version = 8')
+      } finally {
+        oldIndex.close()
+      }
+      const rebuilt = await ctx.plugin(unwrapped, { path: searchPath })
+      try {
+        await expect(ctx.sessionQuery.searchSessions({ query: '日本語' }))
+          .resolves.toMatchObject({ items: [{ header: { id }, bestMatch: { snippet: text } }] })
+        expect((await readdir(persistenceRoot, { recursive: true })).filter(path => path.endsWith('.jsonl')).sort()).toEqual(files)
+        expect(await Promise.all(files.map(path => readFile(join(persistenceRoot, path), 'utf8')))).toEqual(before)
+      } finally {
+        await rebuilt.dispose()
+      }
+    } finally {
+      await query.dispose()
+      await persistence.dispose()
+    }
   })
 })

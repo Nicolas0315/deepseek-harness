@@ -89,7 +89,7 @@ SectionEnd
   await execute(compiler.path, ['/V2', payloadSource], { ...childOptions, env: { ...childOptions.env, ...compiler.env } })
   if (sign) await sign({ path: join(payload, `${productName}.exe`), hash: 'sha256', isNest: false })
   const sourceStrings = await readFile(join(appRoot, 'installer', 'strings.nsh'), 'utf8')
-  for (const language of ['en_US', 'zh_CN']) {
+  for (const language of ['en_US', 'zh_CN', 'ja_JP']) {
     const config = createElectronBuilderConfig()
     if (sign) {
       config.win.forceCodeSigning = true
@@ -98,7 +98,7 @@ SectionEnd
     const languageOutput = join(output, language)
     await mkdir(languageOutput)
     const strings = join(languageOutput, 'strings.nsh')
-    const languageId = language === 'en_US' ? 'ENGLISH' : 'SIMPCHINESE'
+    const languageId = language === 'en_US' ? 'ENGLISH' : language === 'ja_JP' ? 'JAPANESE' : 'SIMPCHINESE'
     await writeFile(strings, sourceStrings.split('\n').filter((line) =>
       !line.startsWith('LangString ') || line.includes(`\${LANG_${languageId}}`)).join('\n'))
     const include = join(languageOutput, 'include.nsh')
@@ -106,7 +106,9 @@ SectionEnd
     await build({ projectDir: appRoot, prepackaged: payload, targets: Platform.WINDOWS.createTarget(['nsis'], Arch.x64), publish: 'never',
       config: { ...config, productName, extraMetadata: { ...config.extraMetadata, name: packageName },
         artifactName: 'installer-test.exe', directories: { output: languageOutput },
-        nsis: { ...config.nsis, guid, include, installerLanguages: [language] }, beforeBuild: undefined, afterPack: undefined, afterSign: undefined, artifactBuildCompleted: undefined },
+        nsis: { ...config.nsis, guid, include, installerLanguages: [language],
+          installerSidebar: join(output, 'ui', 'uninstaller-sidebar.bmp'),
+          uninstallerSidebar: join(output, 'ui', 'uninstaller-sidebar.bmp') }, beforeBuild: undefined, afterPack: undefined, afterSign: undefined, artifactBuildCompleted: undefined },
     })
     if (process.argv.includes('--compile-only')) continue
     const result = await execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',

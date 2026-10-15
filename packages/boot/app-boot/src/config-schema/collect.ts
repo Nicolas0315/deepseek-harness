@@ -1,5 +1,6 @@
 /** Boot-free inspection of declared plugin Config schemas using profile module resolution. */
 
+import { diagnosticMessages } from '../diagnostics.ts'
 import { readFile, realpath } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -34,30 +35,34 @@ function configOf(plugin: unknown): unknown {
 }
 
 function validateMetadata(row: object): void {
+  const messages = diagnosticMessages()
   for (const key of ['id', 'name']) {
     const value: unknown = Reflect.get(row, key)
-    if (value !== undefined && typeof value !== 'string') throw new Error(`${key} must be a literal string`)
+    if (value !== undefined && typeof value !== 'string') throw new Error(messages.mustBeALiteralString(key))
   }
   const group: unknown = Reflect.get(row, 'group')
-  if (group !== undefined && group !== null && typeof group !== 'boolean') throw new Error('group must be a literal boolean or null')
+  if (group !== undefined && group !== null && typeof group !== 'boolean') throw new Error(messages.groupMustBeALiteralBooleanOrNull)
 }
 
 function validateEntry(value: unknown): asserts value is ParsedEntry {
-  if (!record(value) || typeof value.name !== 'string') throw new Error('each entry must be a mapping with a literal plugin name')
+  const messages = diagnosticMessages()
+  if (!record(value) || typeof value.name !== 'string') throw new Error(messages.eachEntryMustBeAMappingWithALiteral)
   validateMetadata(value)
 }
 
 function entryList(value: unknown): unknown[] {
-  if (value === undefined) throw new Error('entry list config is missing')
-  if (!Array.isArray(value)) throw new Error('expected a literal entry list; config expressions are not evaluated')
+  const messages = diagnosticMessages()
+  if (value === undefined) throw new Error(messages.entryListConfigIsMissing)
+  if (!Array.isArray(value)) throw new Error(messages.expectedALiteralEntryListConfigExpressionsAreNot)
   return value as unknown[]
 }
 
 function includePatches(value: unknown): PatchOptions[] | undefined {
+  const messages = diagnosticMessages()
   if (value === undefined) return undefined
-  if (!Array.isArray(value)) throw new Error('include patches must be a literal patch list; config expressions are not evaluated')
+  if (!Array.isArray(value)) throw new Error(messages.includePatchesMustBeALiteralPatchListConfig)
   for (const patch of value as unknown[]) {
-    if (!record(patch) || isJsExpr(patch)) throw new Error('include patches must be literal mappings; config expressions are not evaluated')
+    if (!record(patch) || isJsExpr(patch)) throw new Error(messages.includePatchesMustBeLiteralMappingsConfigExpressionsAre)
     validateMetadata(patch)
     if (patch.insert !== undefined) entryList(patch.insert)
   }
@@ -81,6 +86,7 @@ export async function collectConfigSchemas(
   resolution: RuntimeResolution,
   diagnostics: readonly ConfigSchemaDiagnostic[] = [],
 ): Promise<ConfigSchemaDump> {
+  const messages = diagnosticMessages()
   const result: { entries: CollectedConfigEntry[]; diagnostics: ConfigSchemaDiagnostic[] } = {
     entries: [], diagnostics: [...diagnostics],
   }
@@ -88,7 +94,7 @@ export async function collectConfigSchemas(
   const interception = installRuntimeInterception(resolution)
   try {
     const loader = ModuleLoader.fromInternal()
-    if (loader === undefined) throw new Error('config schema dump requires the Node module loader used by profile resolution')
+    if (loader === undefined) throw new Error(messages.configSchemaDumpRequiresTheNodeModuleLoaderUsed)
     const builtins: Record<string, unknown> = { group: Group, include: Include }
     const nativeCarriers = new Map<string, Promise<{ group: unknown; include: unknown }>>()
     const carrier = async (plugin: unknown, baseUrl: string): Promise<'group' | 'include' | undefined> => {
@@ -111,7 +117,7 @@ export async function collectConfigSchemas(
       const native = await resolved
       if (plugin === native.group) return 'group'
       if (plugin === native.include) return 'include'
-      throw new Error('unrecognized Loader tree carrier; use cordis:group or cordis:include for native child collection')
+      throw new Error(messages.unrecognizedLoaderTreeCarrierUseCordisGroupOrCordis)
     }
     const ancestors = new Set<string>()
     const report = (path: string, error: unknown): void => {
@@ -123,12 +129,12 @@ export async function collectConfigSchemas(
     }
 
     const walkInclude = async (config: unknown, baseUrl: string, path: string): Promise<void> => {
-      if (config === undefined) throw new Error('include config is missing')
-      if (!record(config) || isJsExpr(config)) throw new Error('include config must be literal; config expressions are not evaluated')
-      if (typeof config.path !== 'string') throw new Error('include path must be literal; config expressions are not evaluated')
+      if (config === undefined) throw new Error(messages.includeConfigIsMissing)
+      if (!record(config) || isJsExpr(config)) throw new Error(messages.includeConfigMustBeLiteralConfigExpressionsAreNot)
+      if (typeof config.path !== 'string') throw new Error(messages.includePathMustBeLiteralConfigExpressionsAreNot)
       const filename = fileURLToPath(new URL(config.path, baseUrl))
       const extension = extname(filename)
-      if (!['.json', '.yaml', '.yml'].includes(extension)) throw new Error(`include extension ${JSON.stringify(extension)} is not supported`)
+      if (!['.json', '.yaml', '.yml'].includes(extension)) throw new Error(messages.includeExtensionIsNotSupported(JSON.stringify(extension)))
       let source: unknown
       let canonical: string
       try {
@@ -137,14 +143,14 @@ export async function collectConfigSchemas(
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
         canonical = filename
       }
-      if (ancestors.has(canonical)) throw new Error(`include cycle at ${filename}`)
+      if (ancestors.has(canonical)) throw new Error(messages.includeCycleAt(filename))
       let content: string | undefined
       try {
         content = await readFile(filename, 'utf8')
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
         source = config.initial
-        if (source === undefined) throw new Error(`include file not found: ${filename}`)
+        if (source === undefined) throw new Error(messages.includeFileNotFound(filename))
       }
       if (content !== undefined) {
         try {
@@ -152,7 +158,7 @@ export async function collectConfigSchemas(
         } catch (error) {
           // Parser messages can quote configuration values; retain only the file and location.
           const at = error instanceof yaml.YAMLException ? ` at line ${error.mark.line + 1}, column ${error.mark.column + 1}` : ''
-          throw new Error(`invalid ${extension === '.json' ? 'JSON' : 'YAML'} include ${filename}${at}`)
+          throw new Error(messages.invalidInclude(extension === '.json' ? 'JSON' : 'YAML', filename, at))
         }
       }
       const patches = includePatches(config.patches)
@@ -161,7 +167,7 @@ export async function collectConfigSchemas(
       try {
         children = applyEntryPatches(rows as EntryOptions[], patches, warn(path))
       } catch (error) {
-        throw new Error(`include patches could not be composed for ${filename}; child declarations are unavailable`, { cause: error })
+        throw new Error(messages.includePatchesCouldNotBeComposedForChildDeclarations(filename), { cause: error })
       }
       ancestors.add(canonical)
       try {
@@ -196,7 +202,7 @@ export async function collectConfigSchemas(
           let exports: unknown
           if (row.name.startsWith('cordis:')) {
             const name = row.name.slice(7)
-            if (!Object.hasOwn(builtins, name)) throw new Error(`unknown Cordis builtin ${JSON.stringify(row.name)}`)
+            if (!Object.hasOwn(builtins, name)) throw new Error(messages.unknownCordisBuiltin(JSON.stringify(row.name)))
             exports = builtins[name]
           } else exports = await loader.import(row.name, baseUrl, {})
           plugin = Loader.prototype.unwrapExports(exports)

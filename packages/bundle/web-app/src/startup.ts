@@ -7,9 +7,10 @@
  * @module @deepseek-ai/dsh-web-app/startup
  */
 
+import { diagnosticMessages } from './diagnostics.ts'
 import { Command } from 'commander'
 import type { Context } from '@deepseek-ai/cordis'
-import { parseCmdline } from '@deepseek-ai/dsh-cmdline'
+import { parseCmdline, resolveCommandLocale } from '@deepseek-ai/dsh-cmdline'
 import { isWildcardHost, type TlsConfig } from '@deepseek-ai/dsh-host-webserver'
 import { parsePublicUrl } from './public-url.ts'
 
@@ -56,29 +57,19 @@ interface WebOptions {
  * This app's command: its flags, its description, and its help text.
  * @returns a fresh program, so one process can parse more than once (tests).
  */
-function webCommand(): Command {
+function webCommand(messages: ReturnType<typeof diagnosticMessages>): Command {
   return new Command()
     .name('dsh --profile web')
-    .description('Serve the DeepSeek Harness browser UI.')
-    .helpOption('-h, --help', 'show this help')
-    .option('--host <host>', 'bind address: one concrete IPv4 or IPv6 literal of a local interface; wildcard addresses are rejected')
-    .option('--no-open', 'do not open the Web UI in the default browser')
-    .option('--port <port>', 'listen port; pass 0 to let the OS pick a free one')
-    .option('--public-url <url>', 'advertise this HTTP(S) root in the printed, opened, runtime-context, and DSH_WEB_URL forms; grants no trust')
-    .option('--trusted-host <authority...>', 'extra authority the /api browser-trust fence accepts (host or host:port; repeatable)')
-    .option('--tls-cert <file>', 'PEM server certificate chain; requires --tls-key')
-    .option('--tls-key <file>', 'unencrypted PEM private key; requires --tls-cert')
-    .addHelpText('after', `
-Examples:
-  dsh --profile web                          serve on the composed host and port
-  dsh --profile web --no-open                serve without opening a browser
-  dsh --profile web --port 8080              serve on another port
-  dsh --profile web --host 10.0.0.7          bind one local interface address
-  dsh --profile web --public-url https://app.example/ui/ --trusted-host app.example
-                                             advertise a prefix-stripping HTTPS proxy entry and admit its authority
-  dsh --profile web --tls-cert ./server-chain.pem --tls-key ./server-key.pem
-                                             serve HTTPS with an existing certificate and key
-`)
+    .description(messages.serveTheDeepSeekHarnessBrowserUI)
+    .helpOption('-h, --help', messages.showThisHelp)
+    .option('--host <host>', messages.bindAddressOneConcreteIPv4OrIPv6LiteralOf)
+    .option('--no-open', messages.doNotOpenTheWebUIInTheDefault)
+    .option('--port <port>', messages.listenPortPassToLetTheOSPickA)
+    .option('--public-url <url>', messages.advertiseThisHTTPSRootInThePrintedOpened)
+    .option('--trusted-host <authority...>', messages.extraAuthorityTheApiBrowserTrustFenceAcceptsHost)
+    .option('--tls-cert <file>', messages.pemServerCertificateChainRequiresTlsKey)
+    .option('--tls-key <file>', messages.unencryptedPEMPrivateKeyRequiresTlsCert)
+    .addHelpText('after', messages.examplesDshProfileWebServeOnTheComposedHost)
 }
 
 /**
@@ -89,26 +80,27 @@ Examples:
  * @param ctx - plugin context carrying the command line.
  */
 export function apply(ctx: Context): void {
-  const program = webCommand()
+  const messages = diagnosticMessages(resolveCommandLocale(ctx))
+  const program = webCommand(messages)
   program.action(() => {
     const options = program.opts<WebOptions>()
     if (options.host !== undefined && isWildcardHost(options.host)) {
-      program.error(`error: --host ${options.host} is an unspecified (wildcard) address, which is not supported: binding every interface would expose remote code execution to the network; bind one concrete IPv4 or IPv6 address instead`)
+      program.error(messages.errorHostIsAnUnspecifiedWildcardAddressWhichIs(options.host))
     }
     if (options.port !== undefined && !/^\d+$/.test(options.port)) {
-      program.error(`error: --port must be a number, got ${JSON.stringify(options.port)}`)
+      program.error(messages.errorPortMustBeANumberGot(JSON.stringify(options.port)))
     }
     let tls: TlsConfig | undefined
     if (options.tlsCert !== undefined && options.tlsKey !== undefined) {
       tls = { certFile: options.tlsCert, keyFile: options.tlsKey }
     } else if (options.tlsCert !== undefined || options.tlsKey !== undefined) {
-      program.error('error: --tls-cert and --tls-key must be supplied together')
+      program.error(messages.errorTlsCertAndTlsKeyMustBeSupplied)
     }
     if (options.publicUrl !== undefined) {
       try {
-        parsePublicUrl(options.publicUrl, '--public-url')
+        parsePublicUrl(options.publicUrl, '--public-url', messages)
       } catch (error) {
-        program.error(`error: ${(error as Error).message}`)
+        program.error(messages.error((error as Error).message))
       }
     }
     ctx.provide(WEB_STARTUP_SERVICE, {

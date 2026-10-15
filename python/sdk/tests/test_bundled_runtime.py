@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
 from deepseek_harness import DeepSeekHarness, HarnessClient, HarnessConfig
-from deepseek_harness.errors import JsonRpcError, TransportClosedError
+from deepseek_harness.errors import TransportClosedError
 from deepseek_harness_runtime import RUNTIME_MODE_ENV_VAR, resolve_bundled_launch_args
 
 _MODES = ("exe", "node")
@@ -26,10 +27,14 @@ def _select_mode(mode: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(RUNTIME_MODE_ENV_VAR, mode)
 
 
-def _client(tmp_path: Path, mode: str, monkeypatch: pytest.MonkeyPatch, *patches: Path) -> HarnessClient:
+def _client(
+    tmp_path: Path, mode: str, monkeypatch: pytest.MonkeyPatch, *patches: Path,
+    language: Literal["en", "zh", "ja"] = "en",
+) -> HarnessClient:
     _select_mode(mode, monkeypatch)
     return HarnessClient(
         HarnessConfig(
+            language=language,
             dsh_home=str(tmp_path / "home"),
             patches=tuple(str(patch) for patch in patches),
             cwd=str(tmp_path),
@@ -87,20 +92,40 @@ def test_python_sdk_applies_an_ordered_profile_patch(
 
 
 @pytest.mark.parametrize("mode", _MODES)
-def test_bundled_runtime_surfaces_unbundled_plugin_failure(
-    tmp_path: Path, mode: str, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("language", ["en", "zh", "ja"])
+def test_bundled_runtime_surfaces_unbundled_required_plugin_failure(
+    tmp_path: Path, mode: str, language: Literal["en", "zh", "ja"], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     patch = tmp_path / "missing.patch.yml"
+    # This globally required startup ID is absent from the SDK profile.
     patch.write_text(json.dumps([{
-        "insert": [{"id": "missing", "name": "@deepseek-ai/dsh-does-not-exist"}],
+        "insert": [{"id": "web-runtime", "name": "@deepseek-ai/dsh-does-not-exist"}],
     }]))
 
-    client = _client(tmp_path, mode, monkeypatch, patch)
+    client = _client(tmp_path, mode, monkeypatch, patch, language=language)
     client.start()
     try:
-        with pytest.raises((JsonRpcError, TransportClosedError, TimeoutError)) as excinfo:
+        with pytest.raises(TransportClosedError) as excinfo:
             client.initialize(provider="deepseek-official", cwd=str(tmp_path), model="deepseek-v4-pro")
     finally:
         client.close()
 
     assert "@deepseek-ai/dsh-does-not-exist" in str(excinfo.value)
+
+
+@pytest.mark.parametrize("mode", _MODES)
+@pytest.mark.parametrize("language", ["en", "zh", "ja"])
+def test_bundled_runtime_reports_optional_plugin_failure_without_blocking_initialization(
+    tmp_path: Path, mode: str, language: Literal["en", "zh", "ja"], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    patch = tmp_path / "optional.patch.yml"
+    patch.write_text(json.dumps([{
+        "insert": [{"id": "optional-missing", "name": "@deepseek-ai/dsh-does-not-exist"}],
+    }]))
+
+    client = _client(tmp_path, mode, monkeypatch, patch, language=language)
+    with client:
+        initialized = client.initialize(provider="deepseek-official", cwd=str(tmp_path), model="deepseek-v4-pro")
+        assert initialized.serverInfo is not None
+
+    assert "@deepseek-ai/dsh-does-not-exist" in client._runtime_diagnostics()

@@ -21,6 +21,8 @@
  * @module @deepseek-ai/dsh-app-boot/profile
  */
 
+import { diagnosticMessages, defaultDiagnosticLocale } from './diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import { createRequire } from 'node:module'
 import { existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
@@ -52,13 +54,15 @@ export type ProfileManifest = Partial<DshPackageManifest>
  * The patch files a bundle declares, as written: one file for a string
  * `patch`, the listed files in order for an array.
  * @param bundle - the bundle's `dsh.bundle` declaration, as read from package.json.
+ * @param locale - diagnostic language captured for this operation.
  * @returns the package-relative patch file paths in application order.
  * @throws {Error} when `patch` is neither a string nor a list of strings.
  */
-export function bundlePatchFiles(bundle: DshBundleManifest): string[] {
+export function bundlePatchFiles(bundle: DshBundleManifest, locale: DiagnosticLocale = defaultDiagnosticLocale()): string[] {
+  const messages = diagnosticMessages(locale)
   const declared = typeof bundle.patch === 'string' ? [bundle.patch] : bundle.patch
   if (!Array.isArray(declared) || !declared.every(file => typeof file === 'string')) {
-    throw new Error('dsh.bundle.patch must be a file path or a list of file paths')
+    throw new Error(messages.dshBundlePatchMustBeAFilePathOr)
   }
   return declared
 }
@@ -67,11 +71,16 @@ export function bundlePatchFiles(bundle: DshBundleManifest): string[] {
  * Resolve a bundle declaration to its ordered absolute patch files.
  * @param packageDir - absolute directory of the bundle package.
  * @param bundle - the bundle's `dsh.bundle` declaration, as read from package.json.
+ * @param locale - diagnostic language captured for this operation.
  * @returns the absolute patch file paths in application order.
  * @throws {Error} when `patch` is neither a string nor a list of strings.
  */
-export function bundlePatchPaths(packageDir: string, bundle: DshBundleManifest): string[] {
-  return bundlePatchFiles(bundle).map(file => join(packageDir, file))
+export function bundlePatchPaths(
+  packageDir: string,
+  bundle: DshBundleManifest,
+  locale: DiagnosticLocale = defaultDiagnosticLocale(),
+): string[] {
+  return bundlePatchFiles(bundle, locale).map(file => join(packageDir, file))
 }
 
 /** One resolved bundle layer of a profile. */
@@ -116,8 +125,9 @@ export interface SkippedBundle {
  * @param profile - the loaded profile.
  */
 export function reportSkippedBundles(binName: string, profile: Pick<Profile, 'skippedBundles'>): void {
+  const messages = diagnosticMessages()
   for (const { packageName, reason } of profile.skippedBundles) {
-    process.stderr.write(`${binName}: skipping profile bundle ${JSON.stringify(packageName)}: ${reason}\n`)
+    process.stderr.write(messages.profileBundleSkipped(binName, JSON.stringify(packageName), reason))
   }
 }
 
@@ -164,13 +174,17 @@ export interface RuntimeResolution {
  * Resolve a profile's directory under the Harness home.
  * @param name - the profile name (`dsh --profile <name>`).
  * @param home - the Harness home; defaults to {@link resolveDshHome}.
+ * @param locale - captured language for invalid profile names.
  * @returns the absolute profile directory (which may not exist yet).
  */
-export function resolveProfileDir(name: string, home: string = resolveDshHome()): string {
+export function resolveProfileDir(
+  name: string, home: string = resolveDshHome(), locale: DiagnosticLocale = defaultDiagnosticLocale(),
+): string {
+  const messages = diagnosticMessages(locale)
   if (name === '' || name.includes('/') || name.includes('\\') || name === '.' || name === '..'
     // Node reserves this name for dependency lookup.
     || name === 'node_modules') {
-    throw new Error(`dsh: invalid profile name ${JSON.stringify(name)}`)
+    throw new Error(messages.dshInvalidProfileName(JSON.stringify(name)))
   }
   return join(home, PROFILES_DIR, name)
 }
@@ -517,13 +531,14 @@ export class ProfileRuntimeResolution implements RuntimeResolution {
    * Compute the latest generation from the same installation, profile directory, and Harness home, rereading the
    * profile's manifest, bundle selection, and installed packages from disk, without retaining synthetic layers.
    * With no profile directory, only installation packages are recomputed. This instance is unchanged.
+   * @param locale - captured language for profile-loading diagnostics.
    * @returns a new resolution for the latest generation.
    */
-  computeLatestResolution(): Promise<ProfileRuntimeResolution> {
+  computeLatestResolution(locale: DiagnosticLocale = defaultDiagnosticLocale()): Promise<ProfileRuntimeResolution> {
     const { installAnchor, home, profileDir } = this.#source
     return createRuntimeResolution({
       installAnchor, home,
-      ...profileDir === undefined ? {} : { profile: loadProfileDirectory('dsh', profileDir, installAnchor) },
+      ...profileDir === undefined ? {} : { profile: loadProfileDirectory('dsh', profileDir, installAnchor, {}, locale) },
     })
   }
 }
@@ -605,20 +620,22 @@ function collectProfileScopePackages(
  * Read a profile's manifest.
  * @param binName - the diagnostic prefix on the thrown error.
  * @param dir - the profile directory.
+ * @param locale - diagnostic language captured for this operation.
  * @returns the parsed manifest.
  */
-export function readProfileManifest(binName: string, dir: string): ProfileManifest {
+export function readProfileManifest(binName: string, dir: string, locale: DiagnosticLocale = defaultDiagnosticLocale()): ProfileManifest {
+  const messages = diagnosticMessages(locale)
   const path = join(dir, 'package.json')
   let raw: string
   try {
     raw = readFileSync(path, 'utf8')
   } catch (error) {
-    throw new Error(`${binName}: failed to read profile manifest ${path}: ${String(error)}`)
+    throw new Error(messages.failedToReadProfileManifest(binName, path, String(error)))
   }
   // The field checks below validate the file data before trusting the parse type.
   const parsed = JSON.parse(raw) as ProfileManifest | null
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error(`${binName}: profile manifest ${path} must hold a JSON object`)
+    throw new Error(messages.profileManifestMustHoldAJSONObject(binName, path))
   }
   return parsed
 }
@@ -708,18 +725,22 @@ function packageDirFromAnchor(anchor: string, packageName: string): string | und
  * @param packageName - the bundle's package name from `dsh.profile.bundles`.
  * @param installAnchor - absolute path of a file inside the dsh app package (its package.json).
  * @param profileDir - the profile directory (second anchor).
+ * @param locale - diagnostic language captured for this operation.
  * @returns the bundle package's absolute directory.
  */
 export function resolveBundleDir(
   binName: string, packageName: string, installAnchor: string, profileDir: string,
+  locale: DiagnosticLocale = defaultDiagnosticLocale(),
 ): string {
+  const messages = diagnosticMessages(locale)
   for (const anchor of [installAnchor, join(profileDir, 'package.json')]) {
     const dir = packageDirFromAnchor(anchor, packageName)
     if (dir !== undefined) return dir
   }
   throw new Error(
-    `${binName}: cannot resolve profile bundle ${JSON.stringify(packageName)} from the dsh installation or ${profileDir}; `
-    + `run 'dsh plugin --profile ${basename(profileDir)} install' if its dependency is not installed`,
+    messages.cannotResolveProfileBundleFromTheDshInstallationOr(
+      binName, JSON.stringify(packageName), profileDir, basename(profileDir),
+    ),
   )
 }
 
@@ -734,6 +755,7 @@ export function resolveBundleDir(
  * @param dir - absolute profile package directory.
  * @param installAnchor - absolute path of the owning dsh app's package.json.
  * @param options - `userLayer: false` skips reading `cordis.patch.yml`.
+ * @param locale - diagnostic language captured for this operation.
  * @returns the successfully loaded bundle layers and optional user patch layer.
  */
 export function loadProfileDirectory(
@@ -741,25 +763,27 @@ export function loadProfileDirectory(
   dir: string,
   installAnchor: string,
   options: { userLayer?: boolean } = {},
+  locale: DiagnosticLocale = defaultDiagnosticLocale(),
 ): Profile {
-  const manifest = dropRetiredBundles(dir, readProfileManifest(binName, dir))
+  const messages = diagnosticMessages(locale)
+  const manifest = dropRetiredBundles(dir, readProfileManifest(binName, dir, locale))
   const bundles = manifest.dsh?.profile?.bundles ?? []
   const layers: ProfileLayer[] = []
   const skippedBundles: SkippedBundle[] = []
-  const exemptions = bundles.length === 0 ? {} : readProfileVersionExemptions(dir)
+  const exemptions = bundles.length === 0 ? {} : readProfileVersionExemptions(dir, locale)
   for (const packageName of bundles) {
     try {
-      const packageDir = resolveBundleDir(binName, packageName, installAnchor, dir)
-      const bundleManifest = readProfileManifest(binName, packageDir)
+      const packageDir = resolveBundleDir(binName, packageName, installAnchor, dir, locale)
+      const bundleManifest = readProfileManifest(binName, packageDir, locale)
       const bundle = bundleManifest.dsh?.bundle
       if (bundle === undefined) {
-        throw new Error(`${binName}: profile bundle ${JSON.stringify(packageName)} declares no dsh.bundle in its package.json`)
+        throw new Error(messages.profileBundleDeclaresNoDshBundleInItsPackage(binName, JSON.stringify(packageName)))
       }
       // A bundle is not a plugin row, so row admission never reads its own peers.
-      const issue = evaluatePluginCompatibility(bundleManifest, exemptions)
-      if (issue !== undefined && !issue.exempted) throw new Error(pluginCompatibilityWarning(issue))
-      const patchPaths = bundlePatchPaths(packageDir, bundle)
-      const patches = patchPaths.flatMap(patchPath => loadOverlayPatches(binName, patchPath))
+      const issue = evaluatePluginCompatibility(bundleManifest, exemptions, undefined, locale)
+      if (issue !== undefined && !issue.exempted) throw new Error(pluginCompatibilityWarning(issue, locale))
+      const patchPaths = bundlePatchPaths(packageDir, bundle, locale)
+      const patches = patchPaths.flatMap(patchPath => loadOverlayPatches(binName, patchPath, locale))
       layers.push({ packageName, packageDir, patchPaths, patches })
     } catch (error) {
       skippedBundles.push({ packageName, reason: String(error) })
@@ -767,7 +791,7 @@ export function loadProfileDirectory(
   }
   const patchPath = join(dir, PROFILE_PATCH_FILENAME)
   const patches = options.userLayer !== false && existsSync(patchPath)
-    ? loadOverlayPatches(binName, patchPath)
+    ? loadOverlayPatches(binName, patchPath, locale)
     : []
   return { name: basename(dir), dir, layers, patchPath, patches, skippedBundles }
 }
@@ -783,25 +807,28 @@ export function loadProfileDirectory(
  * @param options - `userLayer: false` skips reading `cordis.patch.yml`, so a
  * bundles-only consumer (`--dump-default-config`, a recovery diagnostic)
  * cannot fail on a broken user layer.
+ * @param locale - diagnostic language captured for this operation.
  * @returns the loaded profile (empty `patches` when the user layer is skipped).
  */
 export function loadProfile(
   binName: string, name: string, installAnchor: string, home: string = resolveDshHome(),
   options: { userLayer?: boolean } = {},
+  locale: DiagnosticLocale = defaultDiagnosticLocale(),
 ): Profile {
-  const dir = resolveProfileDir(name, home)
+  const messages = diagnosticMessages(locale)
+  const dir = resolveProfileDir(name, home, locale)
   if (!existsSync(join(dir, 'package.json'))) {
     const template = PROFILE_TEMPLATES[name]
     if (template === undefined) {
       throw new Error(
-        `${binName}: profile ${JSON.stringify(name)} does not exist; create it with 'dsh plugin --profile ${name} add <package>'`,
+        messages.profileDoesNotExistCreateItWithDshPlugin(binName, JSON.stringify(name), name),
       )
     }
     initProfile(dir, template.bundles)
   }
   removeLinkProjections(dir)
-  normalizeShippedProfile(name, dir, readProfileManifest(binName, dir))
-  return loadProfileDirectory(binName, dir, installAnchor, options)
+  normalizeShippedProfile(name, dir, readProfileManifest(binName, dir, locale))
+  return loadProfileDirectory(binName, dir, installAnchor, options, locale)
 }
 
 /**

@@ -13,6 +13,8 @@ import {
 import Timer from '@deepseek-ai/cordis-plugin-timer'
 import { expect, it, onTestFinished, vi } from 'vitest'
 import Hmr from '../src/index.ts'
+import { createLaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
+import { ModuleFiles } from '../src/module-files.ts'
 
 const watchers = vi.hoisted(() => [] as import('chokidar').FSWatcher[])
 vi.mock('chokidar', async (original) => {
@@ -115,7 +117,10 @@ function linked(home: string, dir: string, value: number): string {
   return target
 }
 
-async function fixture(bundles = ['addon', 'other'], before?: (home: string, dir: string) => Promise<void>, ready = true) {
+async function fixture(
+  bundles = ['addon', 'other'], before?: (home: string, dir: string) => Promise<void>, ready = true,
+  language?: 'en' | 'zh' | 'ja',
+) {
   const home = realpathSync(mkdtempSync(join(tmpdir(), 'hmr-package-reload-')))
   const dir = join(home, 'profiles', 'test')
   initProfile(dir, bundles)
@@ -139,6 +144,9 @@ async function fixture(bundles = ['addon', 'other'], before?: (home: string, dir
   let commit: (() => void) | undefined
   const firstWatcher = watchers.length
   const ctx = await boot('test', join(dir, 'cordis.yml'), readProfilePatches('test', profile), (host) => {
+    if (language !== undefined) {
+      host.provide('launchEnvironment', createLaunchEnvironmentSnapshot([{ source: 'process', values: { DSH_LANG: language } }]))
+    }
     host.provide('profileContext', profile)
     host.provide('reloadTrace', trace)
     host.provide('appReady', { onReady(listener) { commit = listener; return () => { commit = undefined } } })
@@ -1277,4 +1285,36 @@ it.each(['group', 'include'] as const)('replaces the children of a nested %s', a
   addon(f.dir, '2')
   await expect(f.reconcile()).resolves.toEqual({ warnings: [], pending: [] })
   expect(f.trace).toEqual(['stop:1', 'start:2:1:-'])
+})
+
+
+it.each([
+  ['ja', '再起動が必要です：%s', '%s に失敗し、モジュールの置換を完了できませんでした', '読み込み済みモジュールとディスク上のファイルの比較'],
+  ['zh', '需要重启：%s', '%s 失败；模块替换未完成', '比较已加载模块与磁盘文件'],
+] as const)('logs %s comparison failures through a profile watch without translating the restart reason', async (language, restart, failed, step) => {
+  const f = await fixture(undefined, undefined, true, language)
+  const failure = new Error('external file failure 日本語 中文 %s')
+  const compare = vi.spyOn(ModuleFiles.prototype, 'compare').mockImplementationOnce(() => { throw failure })
+  const warn = vi.spyOn(f.ctx.logger, 'warn').mockImplementation(() => {})
+  onTestFinished(() => { compare.mockRestore(); warn.mockRestore() })
+  await f.editPatch()
+  expect(warn).toHaveBeenCalledWith(failed, step)
+  expect(warn).toHaveBeenCalledWith(failure)
+  expect(warn).toHaveBeenCalledWith(restart, 'module-comparison')
+  expect(f.trace.toSorted()).toEqual(['start:1:1:-', 'start:other'])
+  await expect(f.reconcile()).resolves.toEqual({ warnings: [], pending: [] })
+})
+
+it('evicts cached modules below a linked root after its resolution stops mapping that root', async () => {
+  const f = await fixture()
+  const lazy = join(f.home, 'work', 'lazy-linked')
+  file(join(lazy, 'package.json'), JSON.stringify({ name: 'lazy-linked', type: 'module' }))
+  file(join(lazy, 'index.mjs'), 'export const loaded = Symbol("linked")\n')
+  age(lazy)
+  const url = pathToFileURL(join(realpathSync(lazy), 'index.mjs')).href
+  const first = await f.ctx.loader.import(url) as { loaded: symbol }
+  const published = { ...table('/packages/addon'), linkedRoots: [{ name: 'lazy-linked', realPath: realpathSync(lazy) }] }
+  resolution(f.ctx, table('/packages/addon'), () => {}, published)
+  await f.reconcile()
+  expect((await f.ctx.loader.import(url) as { loaded: symbol }).loaded).not.toBe(first.loaded)
 })

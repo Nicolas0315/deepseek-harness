@@ -1,4 +1,6 @@
 /** Comment-preserving profile plugin enablement edits and the entry flattening they compare against. */
+import { diagnosticMessages } from './diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 import { readFile } from 'node:fs/promises'
 import { isMap, isNode, isScalar, isSeq, parseDocument } from 'yaml'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
@@ -20,10 +22,14 @@ export function flatten(rows: EntryOptions[]): EntryOptions[] {
  * @param id Unique composition entry id.
  * @param name Module name used to match name-qualified overrides.
  * @param enabled Desired entry enablement.
+ * @param locale Captured operation language; omitted, resolves the inherited environment.
  * @returns Whether the file changed.
  */
-export async function writePluginEnabled(profile: ProfileContext, id: string, name: string, enabled: boolean): Promise<boolean> {
+export async function writePluginEnabled(
+  profile: ProfileContext, id: string, name: string, enabled: boolean, locale?: DiagnosticLocale,
+): Promise<boolean> {
   const filename = profile.patchPath
+  const messages = diagnosticMessages(locale)
   let text: string
   try {
     text = await readFile(filename, 'utf8')
@@ -36,9 +42,9 @@ export async function writePluginEnabled(profile: ProfileContext, id: string, na
   })
   const error = document.errors[0]
   if (error !== undefined) throw error
-  if (!isSeq(document.contents)) throw new Error('Profile patch must be a YAML sequence')
-  const patches = loadOptionalPatches('dsh', filename) ?? []
-  const bundlePatches = readBundlePatches('dsh', profile)
+  if (!isSeq(document.contents)) throw new Error(messages.profilePatchMustBeAYAMLSequence)
+  const patches = loadOptionalPatches('dsh', filename, locale) ?? []
+  const bundlePatches = readBundlePatches('dsh', profile, undefined, locale)
   const items = document.contents.items
   const target = items.findLast((item, index) => {
     if (!isMap(item) || document.getIn([index, 'id']) !== id || item.has('insert')) return false

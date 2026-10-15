@@ -193,6 +193,7 @@ export async function approveEscalation<A, C>(request: EscalationRequest, approv
     displayReason: {
       en: `Allow this operation with ${mode} permissions: ${justification}`,
       zh: `允许本次操作使用 ${mode} 权限：${justification}`,
+      ja: `${mode} 権限でこの操作を許可しますか：${justification}`,
     },
     ...approval.signal ? { signal: approval.signal } : {},
   })

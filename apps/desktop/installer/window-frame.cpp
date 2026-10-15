@@ -90,6 +90,7 @@ struct ProgressPage {
     ULONG_PTR gdiplus;
     Image* brand;
     WCHAR captions[5][128];
+    WCHAR fontFace[LF_FACESIZE];
 };
 
 // NSIS shows its page after MUI's SHOW callback; keep its controls off screen.
@@ -155,8 +156,9 @@ static LRESULT CALLBACK ProgressProc(HWND window, UINT message, WPARAM wparam, L
             SolidBrush ink(page->dark ? Color(255, 255, 255, 255) : Color(255, 15, 17, 21));
             FillProgress(graphics, track, 472.0f);
             FillProgress(graphics, ink, 472.0f * static_cast<REAL>(page->progress.value) / 100);
-            FontFamily family(L"Microsoft YaHei UI");
-            Font font(&family, 14, FontStyleRegular, UnitPixel);
+            FontFamily family(page->fontFace);
+            const FontFamily* selected = family.GetLastStatus() == Ok ? &family : FontFamily::GenericSansSerif();
+            Font font(selected, 14, FontStyleRegular, UnitPixel);
             StringFormat centered;
             centered.SetAlignment(StringAlignmentCenter);
             centered.SetLineAlignment(StringAlignmentCenter);
@@ -164,7 +166,7 @@ static LRESULT CALLBACK ProgressProc(HWND window, UINT message, WPARAM wparam, L
             wsprintfW(caption, page->captions[page->progress.CaptionStage()], percent);
             SetWindowTextW(window, caption);
             graphics.DrawString(caption, -1, &font, RectF(48, 512, 504, 22), &centered, &ink);
-            Font controls(&family, 16, FontStyleRegular, UnitPixel);
+            Font controls(selected, 16, FontStyleRegular, UnitPixel);
             graphics.DrawString(L"\x2212", -1, &controls, RectF(504, 8, 40, 32), &centered, &ink);
             graphics.DrawString(L"\x00d7", -1, &controls, RectF(548, 8, 40, 32), &centered, &ink);
             Graphics screen(dc);
@@ -186,7 +188,7 @@ static LRESULT CALLBACK ProgressProc(HWND window, UINT message, WPARAM wparam, L
 // Runs on the NSIS UI thread; the stock installation section runs on its worker.
 extern "C" __declspec(dllexport) HWND __cdecl InstallerShowProgress(HWND parent, HWND source,
         BOOL dark, UINT dpi, const WCHAR* brand, const WCHAR* preparing, const WCHAR* extracting,
-        const WCHAR* copying, const WCHAR* registering, const WCHAR* cleaning) {
+        const WCHAR* copying, const WCHAR* registering, const WCHAR* cleaning, const WCHAR* fontFace) {
     HINSTANCE module = GetModuleHandleW(nullptr);
     WNDCLASSW type = {};
     type.lpfnWndProc = ProgressProc;
@@ -205,6 +207,7 @@ extern "C" __declspec(dllexport) HWND __cdecl InstallerShowProgress(HWND parent,
     ShowWindow(stockPage, SW_HIDE);
     page->dark = dark != FALSE;
     page->dpi = dpi;
+    lstrcpynW(page->fontFace, fontFace, LF_FACESIZE);
     const WCHAR* captions[] = {preparing, extracting, copying, registering, cleaning};
     for (int i = 0; i < 5; ++i) lstrcpynW(page->captions[i], captions[i], 128);
     page->brand = new Image(brand);

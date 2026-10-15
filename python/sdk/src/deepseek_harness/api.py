@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 
+from ._messages import message as diagnostic, resolve_language
 from .client import HarnessClient, HarnessConfig
 from .errors import SdkProtocolError
 from .models import JsonObject, Notification
@@ -16,7 +18,8 @@ class DeepSeekHarnessConfig:
 
     The runtime inherits the caller's environment by default, so existing
     DEEPSEEK_API_KEY and DEEPSEEK_BASE_URL settings keep working. Use ``env`` to
-    intentionally override or inject variables for a subprocess.
+    intentionally override or inject variables for a subprocess. ``language``
+    selects owned diagnostics and child DSH_LANG without changing os.environ.
     """
 
     provider: str = "deepseek-official"
@@ -35,6 +38,7 @@ class DeepSeekHarnessConfig:
     shutdown_timeout_seconds: float | None = 1.0
     base_url: str | None = None
     api_key: str | None = None
+    language: Literal["en", "zh", "ja"] | None = None
 
 
 @dataclass(slots=True)
@@ -62,7 +66,8 @@ class DeepSeekHarness:
         **kwargs: object,
     ) -> None:
         if config is not None and kwargs:
-            raise TypeError("pass either DeepSeekHarnessConfig or keyword options, not both")
+            raise TypeError(diagnostic("config_options", resolve_language(
+                {**os.environ, **config.env}, config.language)))
         self.config = config or DeepSeekHarnessConfig(**kwargs)
         cwd = str(Path(self.config.cwd or Path.cwd()).resolve())
         runtime_cwd = str(Path(self.config.runtime_cwd).resolve()) if self.config.runtime_cwd is not None else cwd
@@ -81,6 +86,7 @@ class DeepSeekHarness:
                 dsh_home=self.config.dsh_home,
                 cwd=runtime_cwd,
                 env=env,
+                language=self.config.language,
                 initialize_timeout_seconds=self.config.initialize_timeout_seconds,
                 request_timeout_seconds=self.config.request_timeout_seconds,
                 shutdown_timeout_seconds=self.config.shutdown_timeout_seconds,
@@ -202,7 +208,7 @@ class Session:
         return RunResult(
             session_id=self.id,
             final_response=final_response(events),
-            finish_reason=finish_reason(events),
+            finish_reason=finish_reason(events, language=self.harness.client.language),
             events=events,
             notifications=notifications,
         )
@@ -247,10 +253,11 @@ def final_response(events: list[JsonObject]) -> str:
     return ""
 
 
-def finish_reason(events: list[JsonObject]) -> str | None:
+def finish_reason(events: list[JsonObject], *, language: Literal["en", "zh", "ja"] | None = None) -> str | None:
     """Return the last turn-ending kind.
 
     The input must contain root-session events from one owned run interval.
+    Language affects only a missing reason diagnostic; reason kinds are unchanged.
 
     Raises:
         SdkProtocolError: The last ``turn/end`` has no string reason kind.
@@ -262,6 +269,6 @@ def finish_reason(events: list[JsonObject]) -> str | None:
         reason = data.get("reason") if isinstance(data, dict) else None
         kind = reason.get("kind") if isinstance(reason, dict) else None
         if not isinstance(kind, str):
-            raise SdkProtocolError("turn/end event requires a string data.reason.kind")
+            raise SdkProtocolError(diagnostic("finish_reason", language))
         return kind
     return None

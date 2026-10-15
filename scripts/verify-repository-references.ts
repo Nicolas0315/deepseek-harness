@@ -12,6 +12,8 @@ const organizationUrl = new RegExp(`\\bgithub\\.com/${organization}(?![a-z0-9-])
 // The independent kit repository owns the engine source and documentation.
 const kitRepositoryUrl = new RegExp(`\\bgithub\\.com/${organization}/libreoffice-kit(?:\\.git)?(?=/|[^a-zA-Z0-9_.-]|$)`, 'g')
 const commitCandidate = /(?<![a-z0-9])[\da-f]{7,40}(?![a-z0-9])/gi
+// uv records artifact byte counts as decimal fields, which may collide with a Git abbreviation.
+const uvArtifactSize = /^\s*\{\s*url\s*=\s*"(?:[^"\\]|\\.)*"\s*,\s*hash\s*=\s*"(?:[^"\\]|\\.)*"\s*,\s*size\s*=\s*(\d+)(?=\s*[,}])/
 const excludedPrefixes = ['vendor/', '.agents/notes/archived/']
 const gitOutputLimit = 64 * 1024 * 1024
 // One 41-byte line per object; 1.2 million objects produce about 49 MiB.
@@ -36,7 +38,7 @@ function isMaintained(file: string): boolean {
  * @param file - Repository-relative path used in diagnostics and exclusions.
  * @param source - File text or a symlink's stored target.
  * @param commits - Lowercase, unambiguous full or abbreviated commit identifiers.
- * @returns One finding per line and reference kind; digests and other Git object types are accepted.
+ * @returns One finding per line and reference kind; digests, uv artifact byte counts, and other Git object types are accepted.
  */
 export function findRepositoryReferences(
   file: string,
@@ -49,7 +51,11 @@ export function findRepositoryReferences(
     if (organizationUrl.test(canonicalReferenceText(line).replace(kitRepositoryUrl, ''))) {
       references.push({ file, line: index + 1, kind: 'organization-url' })
     }
-    if ([...line.matchAll(commitCandidate)].some(match => commits.has(match[0].toLowerCase()))) {
+    const artifact = file.split('/').at(-1) === 'uv.lock' ? uvArtifactSize.exec(line) : null
+    const size = artifact?.[1]
+    const sizeStart = artifact === null || size === undefined ? -1 : artifact[0].length - size.length
+    if ([...line.matchAll(commitCandidate)].some(match =>
+      match.index !== sizeStart && commits.has(match[0].toLowerCase()))) {
       references.push({ file, line: index + 1, kind: 'commit-hash' })
     }
   }

@@ -16,6 +16,12 @@
     },
     {
       "path": "../../../vendor/loader"
+    },
+    {
+      "path": "../../util/diagnostic-locale"
+    },
+    {
+      "path": "../../util/launch-environment"
     }
   ]
 }

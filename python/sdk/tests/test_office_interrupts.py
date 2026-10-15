@@ -91,7 +91,8 @@ def test_windows_second_interrupt_uses_absolute_taskkill_and_waits(monkeypatch: 
 
     def popen(arguments, **options):
         assert options == {"stdin": subprocess.DEVNULL, "stdout": subprocess.PIPE,
-                           "stderr": subprocess.PIPE, "start_new_session": False}
+                           "stderr": subprocess.PIPE, "start_new_session": False,
+                           "env": {"SystemRoot": r"D:\Windows", "DSH_LANG": "ja"}}
         return process
 
     monkeypatch.setattr(_resources, "os", SimpleNamespace(name="nt", path=ntpath, environ={"SystemRoot": r"C:\Windows"}))
@@ -100,7 +101,8 @@ def test_windows_second_interrupt_uses_absolute_taskkill_and_waits(monkeypatch: 
         run=lambda arguments, **options: calls.append((arguments, options)),
     ))
     with pytest.raises(KeyboardInterrupt):
-        _resources.run_office_process(["node.exe", "cli.js"])
+        _resources.run_office_process(["node.exe", "cli.js"], language="ja", env={"SystemRoot": r"D:\Windows"})
     assert process.attempts == 3
-    assert calls == [([r"C:\Windows\System32\taskkill.exe", "/PID", "73", "/T", "/F"],
-                      {"stdin": subprocess.DEVNULL, "capture_output": True, "check": False})]
+    assert calls == [([r"D:\Windows\System32\taskkill.exe", "/PID", "73", "/T", "/F"],
+                      {"stdin": subprocess.DEVNULL, "capture_output": True, "check": False,
+                       "env": {"SystemRoot": r"D:\Windows", "DSH_LANG": "ja"}})]

@@ -1,0 +1,17 @@
+使い方: dsh --profile headless [options] [task...]
+
+一つのタスクに回答して終了します。回答は標準出力、診断は標準エラー出力に書き出します。
+
+引数:
+  task               タスクの本文。複数の単語は空白で連結し、`-` は標準入力を読み取る
+
+オプション:
+  --json             最終メッセージの代わりに改行区切りの実行イベントを標準出力へ書き出す
+  --session-id <id>  指定 ID の保存済みセッションを再開する。存在しない ID はエラー
+  -h, --help         このヘルプを表示する
+
+使用例:
+  dsh --profile headless "テストを実行"          タスクに回答して終了
+  echo "テストを実行" | dsh --profile headless   標準入力からタスクを読み取り
+  dsh --profile headless --json "テストを実行"   機械可読の実行イベントを出力
+  dsh --profile headless --session-id session-… "続けて"   既存セッションを再開

@@ -37,6 +37,7 @@ type LaunchOverrides = Partial<RuntimeProcessOptions>
 /** Launch options running the fake runtime on the current node (type stripping). */
 function fakeLaunch(env: Record<string, string> = {}, extra: LaunchOverrides = {}): RuntimeProcessOptions {
   return {
+    language: 'en',
     command: process.execPath,
     args: [fakeRuntime],
     environment: () => ({ ...process.env as Record<string, string>, ...env }),

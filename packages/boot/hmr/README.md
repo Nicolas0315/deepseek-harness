@@ -35,6 +35,8 @@ The base bundle enables HMR with `root: []` when the launcher supplies `profileC
 
 Existing configurations replace the module name `@deepseek-ai/cordis-plugin-hmr` with `@deepseek-ai/dsh-hmr`. The `hmr` service key, `baseDir`, `config`, `getLinked()`, `getOuterStack()`, `hmr/change` and `hmr/reload` remain available. The vendored package remains available; DSH profiles use this package.
 
+HMR captures the diagnostic language from the launcher environment when it starts, using [diagnostic-locale](../../util/diagnostic-locale/README.md) precedence. Its reload messages support English, Chinese, and Japanese. Module identifiers, paths, returned restart reasons, and original compiler or plugin errors retain their original values.
+
 ### Configuration
 
 | Field | Default | Meaning |

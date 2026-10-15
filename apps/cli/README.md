@@ -6,6 +6,8 @@ The `dsh` command is the sole supported Node application launcher: profiles are 
 
 ## Entry modes
 
+Launcher help, argument errors, profile preparation, plugin reports, and startup diagnostics use the [command-line diagnostic language](../../packages/boot/cmdline/README.md#parsing-your-flags). Configuration dumps retain their machine-readable structure.
+
 | Command | Purpose |
 |---|---|
 | `dsh <name>` / `dsh --profile <name>` | Boot the named profile under `$DSH_HOME/profiles/<name>`. |

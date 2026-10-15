@@ -1,0 +1,3 @@
+- text: sk-01234***************************
+- button "秘密情報を表示"
+- text: is the key for this task.

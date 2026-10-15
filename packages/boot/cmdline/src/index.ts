@@ -17,6 +17,8 @@
  */
 
 import type { Command } from 'commander'
+import { configureCommandLocale, diagnosticMessages, resolveCommandLocale } from './diagnostics.ts'
+export { configureCommandLocale, formatCommandError, resolveCommandLocale } from './diagnostics.ts'
 import type { Context } from '@deepseek-ai/cordis'
 
 /**
@@ -121,10 +123,11 @@ export const internals: {
  * @param label - effect label naming the owning application.
  */
 export function exitOnStdinEnd(ctx: Context, label: string): void {
+  const messages = diagnosticMessages(resolveCommandLocale(ctx))
   const exit = ctx.get('appExit')
   const ready = ctx.get('appReady')
   if (exit === undefined || ready === undefined) {
-    throw new Error('stdio app: the launcher must provide ctx.appExit and ctx.appReady before the tree mounts')
+    throw new Error(messages.missingStdioHost)
   }
   const stdin = internals.stdin
   let active = true
@@ -163,16 +166,19 @@ export function exitOnStdinEnd(ctx: Context, label: string): void {
  * or when no command in the program declares an action.
  */
 export function parseCmdline(ctx: Context, program: Command): void {
+  const locale = resolveCommandLocale(ctx)
+  const messages = diagnosticMessages(locale)
   // Read through the global service store, not the property proxy: appExit is
   // an optional host value and the plugin only needs to inject cmdlineArgs.
   const args = ctx.get('cmdlineArgs')
   const exit = ctx.get('appExit')
   if (args === undefined || exit === undefined) {
-    throw new Error(`${program.name()}: the launcher must provide ctx.cmdlineArgs and ctx.appExit before the tree mounts`)
+    throw new Error(messages.missingCmdlineHost(program.name()))
   }
   if (!hasAction(program)) {
-    throw new Error(`${program.name()}: no command in the program declares an action; parseCmdline runs the invoked command's action on a successful parse, and app code there publishes its service`)
+    throw new Error(messages.missingAction(program.name()))
   }
+  configureCommandLocale(program, locale)
   configureExitAndOutput(program)
   try {
     program.parse(args.get(), { from: 'user' })

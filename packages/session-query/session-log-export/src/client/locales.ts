@@ -31,3 +31,18 @@ export const en: Record<keyof typeof zh, string> = {
 
 /** Stable locale keys consumed by the shared modal. */
 export type SessionLogDownloadKey = keyof typeof zh
+
+
+/** Japanese dictionary, checked against the complete source key set. */
+export const ja: Record<keyof typeof en, string> = {
+  'header.more': 'その他の操作',
+  'menu.download': 'セッションログをダウンロード',
+  'menu.feedback': 'フィードバック',
+  'dialog.preparingTitle': 'セッションをエクスポート中',
+  'dialog.preparingDescription': 'このセッション、子セッション、添付ファイルを含む ZIP を準備しています。',
+  'dialog.successTitle': 'セッションのダウンロードを開始しました',
+  'dialog.successDescription': 'ブラウザーがセッションの ZIP をダウンロードしています。',
+  'dialog.errorTitle': 'セッションのエクスポートに失敗しました',
+  'dialog.close': '閉じる',
+  'dialog.commandFailed': 'セッションのエクスポートを開始できませんでした。',
+}

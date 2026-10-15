@@ -3,6 +3,8 @@
  * @module @deepseek-ai/dsh-sdk-client/launch
  */
 
+import { resolveDiagnosticLocale, type DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
+import { diagnostics, defaultDiagnosticLocale } from './diagnostics.ts'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -13,6 +15,8 @@ export const DEFAULT_INITIALIZE_TIMEOUT_MS = 10_000
 
 /** Internal generic process launch used by the transport and fake-runtime tests. */
 export interface RuntimeProcessOptions {
+  /** Captured diagnostic language; omitted resolves from the effective environment. */
+  language?: DiagnosticLocale
   command: string
   args: string[]
   cwd?: string
@@ -50,29 +54,36 @@ function manifest(url: string): PackageManifest {
  * Resolve and version-check a dsh executable from package manifests.
  * @param dshManifestUrl - resolved URL of the dsh package manifest.
  * @param clientManifestUrl - resolved URL of the SDK client manifest.
+ * @param language - diagnostic language for manifest failures.
  * @returns the absolute dsh executable path.
  */
-export function resolveDshBinFromManifests(dshManifestUrl: string, clientManifestUrl: string): string {
+export function resolveDshBinFromManifests(
+  dshManifestUrl: string,
+  clientManifestUrl: string,
+  language: DiagnosticLocale = defaultDiagnosticLocale(),
+): string {
   const dshManifest = manifest(dshManifestUrl)
   const clientManifest = manifest(clientManifestUrl)
   if (typeof dshManifest.version !== 'string' || dshManifest.version !== clientManifest.version) {
-    throw new Error(`dsh SDK client ${String(clientManifest.version)} requires the same dsh version, got ${String(dshManifest.version)}`)
+    throw new Error(diagnostics[language].version(String(clientManifest.version), String(dshManifest.version)))
   }
   const bin = typeof dshManifest.bin === 'object' && dshManifest.bin !== null
     ? (dshManifest.bin as Record<string, unknown>).dsh
     : dshManifest.bin
-  if (typeof bin !== 'string' || bin === '') throw new Error('@deepseek-ai/dsh declares no dsh executable')
+  if (typeof bin !== 'string' || bin === '') throw new Error(diagnostics[language].noExecutable())
   return resolve(dirname(fileURLToPath(dshManifestUrl)), bin)
 }
 
 /**
  * Resolve and version-check the built dsh executable installed with this SDK.
+ * @param language - diagnostic language for manifest failures.
  * @returns the absolute built executable path, whether or not it exists in a source checkout.
  */
-export function installedDshBin(): string {
+export function installedDshBin(language: DiagnosticLocale = defaultDiagnosticLocale()): string {
   return resolveDshBinFromManifests(
     import.meta.resolve('@deepseek-ai/dsh/package.json'),
     new URL('../package.json', import.meta.url).href,
+    language,
   )
 }
 
@@ -81,14 +92,16 @@ export function installedDshBin(): string {
  * @param dshManifestUrl - resolved URL of the dsh package manifest.
  * @param clientManifestUrl - resolved URL of the SDK client manifest.
  * @param sourceLoaderUrl - optional absolute tsx loader URL for deterministic tests.
+ * @param language - diagnostic language for launch failures.
  * @returns built output, or the source entry plus its compatibility patch and tsx environment.
  */
 export function resolveDshNodeLaunchFromManifests(
   dshManifestUrl: string,
   clientManifestUrl: string,
   sourceLoaderUrl?: string,
+  language: DiagnosticLocale = defaultDiagnosticLocale(),
 ): DshNodeLaunch {
-  const bin = resolveDshBinFromManifests(dshManifestUrl, clientManifestUrl)
+  const bin = resolveDshBinFromManifests(dshManifestUrl, clientManifestUrl, language)
   if (existsSync(bin)) return { nodeArgs: [bin], patches: [], environment: {} }
 
   const packageDir = dirname(fileURLToPath(dshManifestUrl))
@@ -97,7 +110,7 @@ export function resolveDshNodeLaunchFromManifests(
   const sourceTsconfig = resolve(packageDir, 'tsconfig.json')
   if (!existsSync(sourceBin) || !existsSync(sourcePatch) || !existsSync(sourceTsconfig)) {
     throw new Error(
-      `@deepseek-ai/dsh is missing its built executable ${bin} and complete source launch files ${sourceBin}, ${sourcePatch}, ${sourceTsconfig}`,
+      diagnostics[language].missingExecutable(bin, sourceBin, sourcePatch, sourceTsconfig),
     )
   }
   const loader = sourceLoaderUrl ?? import.meta.resolve('tsx/esm')
@@ -112,10 +125,12 @@ export function resolveDshNodeLaunchFromManifests(
  * Resolve the installed dsh package to a built or source Node launch.
  * @returns the launch descriptor for the current checkout or installed package.
  */
-function installedDshNodeLaunch(): DshNodeLaunch {
+function installedDshNodeLaunch(language: DiagnosticLocale): DshNodeLaunch {
   return resolveDshNodeLaunchFromManifests(
     import.meta.resolve('@deepseek-ai/dsh/package.json'),
     new URL('../package.json', import.meta.url).href,
+    undefined,
+    language,
   )
 }
 
@@ -129,9 +144,10 @@ export function resolveDshLaunch(
   options: HarnessClientOptions = {},
   callerCwd: string = process.cwd(),
 ): RuntimeProcessOptions {
+  const language = options.language ?? resolveDiagnosticLocale(options.env ?? process.env, Intl.DateTimeFormat().resolvedOptions().locale)
   const profile = options.profile ?? 'sdk'
   const dshLaunch = options.dshBin === undefined
-    ? installedDshNodeLaunch()
+    ? installedDshNodeLaunch(language)
     : { nodeArgs: [resolve(callerCwd, options.dshBin)], patches: [], environment: {} }
   const patches = [
     ...dshLaunch.patches,
@@ -139,15 +155,17 @@ export function resolveDshLaunch(
   ]
   const dshHome = options.dshHome === undefined ? undefined : resolve(callerCwd, options.dshHome)
   return {
+    language,
     command: process.execPath,
     args: [...dshLaunch.nodeArgs, '--profile', profile, ...patches.flatMap(path => ['--patch', path])],
     ...options.processCwd === undefined ? {} : { cwd: resolve(callerCwd, options.processCwd) },
     environment: () => ({
       ...(options.env ?? process.env),
       ...dshLaunch.environment,
+      DSH_LANG: language,
       ...dshHome === undefined ? {} : { DSH_HOME: dshHome },
     }),
-    description: `dsh profile ${JSON.stringify(profile)}`,
+    description: diagnostics[language].profile(JSON.stringify(profile)),
     initializeTimeoutMs: options.initializeTimeoutMs ?? DEFAULT_INITIALIZE_TIMEOUT_MS,
     ...options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: options.requestTimeoutMs },
     ...options.shutdownTimeoutMs === undefined ? {} : { shutdownTimeoutMs: options.shutdownTimeoutMs },

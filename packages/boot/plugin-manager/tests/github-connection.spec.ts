@@ -187,3 +187,19 @@ it('does not invoke configured credential helpers or askpass for an authenticati
   expect(await check('github:acme/private.git')).toMatchObject({ exitCode: 128, kind: 'unknown' })
   await expect(readFile(marker)).rejects.toMatchObject({ code: 'ENOENT' })
 })
+
+it('uses the captured caller language for a Git deadline and retains raw stderr', async () => {
+  const { dir, controller } = await fixture()
+  const raw = 'external git diagnostic: 日本語\n'
+  const run = vi.spyOn(subprocess, 'execa').mockImplementation((...args: unknown[]) => {
+    const options = args[2] as { stderr: { file: string } }
+    appendFileSync(options.stderr.file, raw)
+    return Promise.resolve({ failed: true, timedOut: true }) as ReturnType<typeof subprocess.execa>
+  })
+  onTestFinished(() => { run.mockRestore() })
+  const result = await checkGithubConnection(parseInstallSpec('github:acme/plugin'), dir, {
+    timeoutMs: 3000, outputBytes: 4096, signal: controller.signal, diagnosticLocale: 'ja',
+  })
+  expect(result?.output).toBe(raw + 'dsh: github.com への接続が 3000ms でタイムアウトしました\n')
+  expect(await readFile(result!.logPath, 'utf8')).toBe(result?.output)
+})

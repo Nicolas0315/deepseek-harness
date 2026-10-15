@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, it, onTestFinished } from 'vitest'
-import { parse } from 'yaml'
+import { parse, parseDocument } from 'yaml'
+import { execa } from 'execa'
 import { approveBuilds, recordPendingBuilds } from '../src/build-approval.ts'
 
 function fixture(text?: string) {
@@ -107,4 +108,28 @@ it('preserves approval keys that are not package names', async () => {
   expect(parse(readFileSync(filename, 'utf8'))).toMatchObject({
     allowBuilds: { 1: true, 'native@1.0.0': 'set this to true or false' },
   })
+})
+
+it.each([['ja', 'en'], ['en', 'ja']])('keeps pending build decisions across %s to %s processes', async (first, second) => {
+  const { dir, filename } = fixture()
+  const moduleUrl = new URL('../src/build-approval.ts', import.meta.url).href
+  const run = async (language: string, approve: boolean) => execa(process.execPath, [
+    '--import', 'tsx/esm', '--input-type=module', '--eval', `
+      const { recordPendingBuilds, approveBuilds } = await import(${JSON.stringify(moduleUrl)});
+      const pending = await recordPendingBuilds(${JSON.stringify(dir)}, ${JSON.stringify(approve ? '' : 'Ignored build scripts: native@1.0.0')});
+      if (${String(approve)}) await approveBuilds(${JSON.stringify(dir)}, ['native@1.0.0']);
+      console.log(JSON.stringify(pending));
+    `,
+  ], { env: { DSH_LANG: language }, timeout: 15000 })
+  expect(JSON.parse((await run(first, false)).stdout)).toEqual(['native@1.0.0'])
+  expect(parseDocument(readFileSync(filename, 'utf8')).getIn(['allowBuilds', 'native@1.0.0'])).toBe('set this to true or false')
+  expect(JSON.parse((await run(second, true)).stdout)).toEqual(['native@1.0.0'])
+  expect(parseDocument(readFileSync(filename, 'utf8')).getIn(['allowBuilds', 'native@1.0.0'])).toBe(true)
+})
+
+it('uses the caller language for invalid build policy without translating saved values', async () => {
+  const { dir, filename } = fixture('allowBuilds: false\n')
+  await expect(recordPendingBuilds(dir, '', 'ja')).rejects.toThrow('allowBuilds は YAML マッピングにしてください')
+  await expect(approveBuilds(dir, ['native'], 'ja')).rejects.toThrow('allowBuilds は YAML マッピングにしてください')
+  expect(readFileSync(filename, 'utf8')).toBe('allowBuilds: false\n')
 })

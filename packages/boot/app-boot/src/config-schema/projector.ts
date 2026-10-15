@@ -1,5 +1,6 @@
 /** Project native Config input constraints without executing their validators or transform callbacks. */
 
+import { diagnosticMessages } from '../diagnostics.ts'
 import type { ConfigJsonSchema, ConfigJsonSchemaObject, NativeConfigSchema } from './types.ts'
 import { isNativeConfigSchema } from './native.ts'
 import { createPatternCheck } from './pattern.ts'
@@ -44,14 +45,15 @@ interface NodeProjection {
 
 /** Copy JSON-compatible schema annotations without silently converting non-JSON defaults. */
 function jsonValue(value: unknown, nullifyUndefined = false): unknown {
+  const messages = diagnosticMessages()
   const visit = (item: unknown, active: Set<object>): void => {
     if (nullifyUndefined && item === undefined) return
     if (item === null || typeof item === 'string' || typeof item === 'boolean') return
     if (typeof item === 'number' && Number.isFinite(item)) return
-    if (typeof item !== 'object') throw new Error('schema annotation is not JSON-compatible')
-    if (active.has(item)) throw new Error('schema annotation contains a cycle')
+    if (typeof item !== 'object') throw new Error(messages.schemaAnnotationIsNotJSONCompatible)
+    if (active.has(item)) throw new Error(messages.schemaAnnotationContainsACycle)
     if (!Array.isArray(item) && Object.getPrototypeOf(item) !== Object.prototype && Object.getPrototypeOf(item) !== null) {
-      throw new Error('schema annotation contains a non-JSON object')
+      throw new Error(messages.schemaAnnotationContainsANonJSONObject)
     }
     active.add(item)
     for (const child of Object.values(item)) visit(child, active)
@@ -126,11 +128,12 @@ function validateVolatilePlacement(
   node: NativeConfigSchema, path: string, blocked = false,
   seen = new Map<NativeConfigSchema, Set<boolean>>(),
 ): void {
+  const messages = diagnosticMessages()
   const states = seen.get(node) ?? new Set<boolean>()
   if (states.has(blocked)) return
   states.add(blocked)
   seen.set(node, states)
-  if (node.meta.volatile && blocked) throw new Error(`${path}: volatile fields require a fixed object path without an enclosing volatile field`)
+  if (node.meta.volatile && blocked) throw new Error(messages.volatileFieldsRequireAFixedObjectPathWithoutAn(path))
   const nested = blocked || !!node.meta.volatile
   for (const [key, child] of Object.entries(node.dict ?? {})) validateVolatilePlacement(child, `${path}/${key}`, nested, seen)
   if (node.sKey) validateVolatilePlacement(node.sKey, `${path}/keys`, true, seen)
@@ -147,6 +150,7 @@ function validateVolatilePlacement(
  * @returns a function projecting one trusted native Config graph into the enclosing document's definitions.
  */
 export async function createConfigProjector(): Promise<(root: NativeConfigSchema, prefix: string) => ConfigProjection> {
+  const messages = diagnosticMessages()
   const { Ajv2020 } = await import('ajv/dist/2020.js')
   const validator = new Ajv2020({ strict: false, logger: false, validateFormats: false, addUsedSchema: false })
   const portablePattern = await createPatternCheck()
@@ -204,14 +208,14 @@ export async function createConfigProjector(): Promise<(root: NativeConfigSchema
             }
             break
           }
-          if (chain.has(inner)) throw new Error(`${path}: lazy cycle has no concrete schema`)
+          if (chain.has(inner)) throw new Error(messages.lazyCycleHasNoConcreteSchema(path))
           chain.add(inner)
           let next: unknown = cachedInner ? inner.inner : builderResults.get(inner)
           if (next === undefined && typeof inner.builder === 'function') {
             next = Reflect.apply(inner.builder, inner, [])
             builderResults.set(inner, next)
           }
-          if (!isNativeConfigSchema(next)) throw new Error(`${path}: lazy schema has no native builder result or resolved inner schema`)
+          if (!isNativeConfigSchema(next)) throw new Error(messages.lazySchemaHasNoNativeBuilderResultOrResolved(path))
           if (!cachedInner && ['required', 'default', 'min', 'max', 'step', 'pattern', 'loose', 'volatile'].some(key => (
             Object.hasOwn(meta, key) && !Object.hasOwn(next.meta, key)
             && (['required', 'loose', 'volatile'].includes(key) ? !!Reflect.get(meta, key) : Reflect.get(meta, key) != null)
@@ -245,7 +249,7 @@ export async function createConfigProjector(): Promise<(root: NativeConfigSchema
         }
         const children: NodeProjection[] = []
         const child = (value: NativeConfigSchema | undefined, suffix: string, childStrict = false): NodeProjection => {
-          if (value === undefined) throw new Error(`${path}: ${node.type} schema is missing ${suffix}`)
+          if (value === undefined) throw new Error(messages.schemaIsMissing(path, node.type, suffix))
           const result = visit(value, `${path}/${suffix}`, childStrict)
           children.push(result)
           return result
@@ -348,7 +352,7 @@ export async function createConfigProjector(): Promise<(root: NativeConfigSchema
             break
           }
           case 'tuple': {
-            if (node.list === undefined) throw new Error(`${path}: tuple schema is missing its list`)
+            if (node.list === undefined) throw new Error(messages.tupleSchemaIsMissingItsList(path))
             const values = node.list.map((item, index) => child(item, String(index)))
             core = { type: 'array', ...(values.length ? { prefixItems: values.map(item => item.schema) } : {}) }
             const minimum = values.reduce((length, value, index) => value.acceptsMissing === false ? index + 1 : length, 0)
@@ -356,7 +360,7 @@ export async function createConfigProjector(): Promise<(root: NativeConfigSchema
             break
           }
           case 'union': {
-            if (node.list === undefined) throw new Error(`${path}: union schema is missing its list`)
+            if (node.list === undefined) throw new Error(messages.unionSchemaIsMissingItsList(path))
             const variants = node.list.map((item, index) => child(item, String(index), strict))
             if (variants.slice(0, -1).some(variant => variant.mutating)) {
               core = true

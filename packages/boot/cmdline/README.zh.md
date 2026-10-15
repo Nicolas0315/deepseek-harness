@@ -39,7 +39,10 @@ kind: "package-library"
 
 `exitOnStdinEnd(ctx, label)` 把已成功启动的 stdio 应用 EOF 绑定到 `ctx.appExit(0)`。它绝不读取或恢复 stdin，因此协议传输会收到挂载前已缓冲的字节；启动拒绝优先于竞态 EOF，所属 fiber 会移除两个待处理的监听器。
 
+<a id="parsing-your-flags"></a>
 ### 解析你的 flag
+
+`resolveCommandLocale(ctx)` 从不可变启动环境中选定英语（`en`）、中文（`zh`）或日语（`ja`）：依次取首个非空的 `DSH_LANG`、`LC_ALL`、`LC_MESSAGES`、`LANG`，再回退到操作系统语言。中文和日语语言标签分别选择对应语言；不支持的语言选择英语。应用使用源代码自有的类型化字典。`parseCmdline` 通过 Commander 的公开格式 API 翻译帮助标题，并根据结构化错误代码给出中文或日语指引，随后附上有明确标记的 Commander 诊断原文。它保留退出行为、自定义 JSON 错误输出、命令与选项拼写、用户文本、路径以及依赖诊断原文，不全局修改进程语言或流。
 
 你自带自己的 commander program：声明你的 flag 与 action，本包会针对内层参数运行它。校验只发生在你的 action 中，并由它发布你的行所需的任何值。插件的 Loader 行不携带特殊标记：
 

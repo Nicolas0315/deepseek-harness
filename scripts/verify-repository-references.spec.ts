@@ -97,6 +97,23 @@ describe('maintained repository reference policy', () => {
     expect(scanRepositoryReferences(fixture.root)).toHaveLength(4)
   })
 
+  it('accepts only the uv artifact size token while checking URLs and trailing comments', () => {
+    const prefix = ['123', '4567'].join('')
+    const commits = new Set([prefix])
+    const row = (url: string) => `{ url = "${url}", hash = "sha256:${'a'.repeat(64)}", size = ${prefix}, upload-time = "2026-01-01" }`
+    const artifact = row('https://files.pythonhosted.org/packages/artifact.whl')
+    expect(findRepositoryReferences('python/sdk/uv.lock', artifact, commits)).toEqual([])
+    for (const source of [row(`https://example.invalid/commit/${prefix}`), `${artifact} # commit ${prefix}`]) {
+      expect(findRepositoryReferences('python/sdk/uv.lock', source, commits)).toEqual([
+        { file: 'python/sdk/uv.lock', line: 1, kind: 'commit-hash' },
+      ])
+    }
+    for (const source of [`size = ${prefix}`, `# ${artifact}`, `note = '${artifact}'`]) {
+      expect(findRepositoryReferences('python/sdk/uv.lock', source, commits)).toHaveLength(1)
+    }
+    expect(findRepositoryReferences('guide.md', artifact, commits)).toHaveLength(1)
+  })
+
   it('checks available unreachable commits without requiring a branch or network', (test) => {
     const fixture = repository(test)
     const unreachable = fixture.git(['commit-tree', fixture.tree, '-m', 'unreachable fixture'])
