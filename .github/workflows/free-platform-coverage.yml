@@ -1,0 +1,58 @@
+name: Free platform coverage qualification
+on:
+  push:
+    branches: [codex/qa-free-coverage-20261015]
+permissions:
+  contents: read
+concurrency:
+  group: free-platform-coverage-qualification
+  cancel-in-progress: false
+env:
+  DSH_TELEMETRY_DISABLED: '1'
+  DSH_COVERAGE_TEST_TIMEOUT_MS: '90000'
+  DSH_COVERAGE_MAX_WORKERS: '2'
+  DSH_COVERAGE_PARTITIONS: '2'
+  DSH_GATE_CONCURRENCY: '1'
+  DSH_GATE_FAIL_FAST: '1'
+jobs:
+  coverage:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          ref: 873be5eb5a16c4188b67977fa969bce28e666f39
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.21.0'
+      - name: Confirm source and install locked package manager
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = 873be5eb5a16c4188b67977fa969bce28e666f39
+          npm install --global pnpm@11.28.5
+      - name: Configure runner-owned temporary storage
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "NODE_COMPILE_CACHE=$RUNNER_TEMP/node-compile-cache" >> "$GITHUB_ENV"
+      - name: Enable Developer Mode for native Windows symlinks
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
+      - name: Prepare official Linux sandbox prerequisite
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash scripts/prepare-ci-bubblewrap.sh
+      - name: Install immutable source dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run official exhaustive coverage gate
+        run: pnpm run check:ci:coverage
+      - name: Verify dependency lock remains unchanged
+        shell: bash
+        run: git diff --exit-code -- pnpm-lock.yaml package.json pnpm-workspace.yaml ':(glob)**/package.json'
