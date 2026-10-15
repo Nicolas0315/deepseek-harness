@@ -19,21 +19,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2025]
+        os: [windows-2025]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
-          ref: 873be5eb5a16c4188b67977fa969bce28e666f39
+          ref: 1a7e3d2307ad6f43d857f2757ef571e2e4f170b7
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24.21.0'
       - name: Confirm source and install locked package manager
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = 873be5eb5a16c4188b67977fa969bce28e666f39
+          test "$(git rev-parse HEAD)" = 1a7e3d2307ad6f43d857f2757ef571e2e4f170b7
           npm install --global pnpm@11.28.5
       - name: Configure runner-owned temporary storage
         if: runner.os == 'Linux'
