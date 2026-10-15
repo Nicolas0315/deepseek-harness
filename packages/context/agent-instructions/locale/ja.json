@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "ワークスペースの指示読み込み",
+    "description": "AGENTS.mdやCLAUDE.mdなどのファイルを読み、AIにワークスペースのルールを提供します。"
+  }
+}

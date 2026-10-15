@@ -37,7 +37,7 @@ def validate_resources(
     executable = python_root / ("python.exe" if platform == "win32" else "bin/python3")
     packages = python_root / ("Lib/site-packages" if platform == "win32" else f"lib/python{version.rsplit('.', 1)[0]}/site-packages")
     node = root / "primary-runtime/dependencies/node/bin" / ("node.exe" if platform == "win32" else "node")
-    required = [executable, node, root / "office-skills/scripts/check_office.py"]
+    required = [executable, node]
     required.extend(root / f"office-skills/office-{kind}/SKILL.md" for kind in ("docx", "pptx", "xlsx"))
     for path in required:
         if not path.is_file():
@@ -65,7 +65,7 @@ def validate_downloads(
             or not isinstance(value.get("office"), list) or not value["office"]
             or not isinstance(value.get("pnpm"), dict)):
         raise ValueError(message("download_manifest", language, path=path))
-    for file in ["scripts/check_office.py", *(f"office-{kind}/SKILL.md" for kind in ("docx", "pptx", "xlsx"))]:
+    for file in (f"office-{kind}/SKILL.md" for kind in ("docx", "pptx", "xlsx")):
         if not (root / "office-skills" / file).is_file():
             raise FileNotFoundError(message("office_skill", language, path=root / "office-skills" / file))
     return value

@@ -338,12 +338,15 @@ describe('shipped locale dictionaries', () => {
   })
 
   it('ships Japanese display metadata for every package with English locale metadata', () => {
-    const files = [...globSync('packages/*/*/locale/en.json', { cwd: root })]
-    expect(files.length).toBeGreaterThanOrEqual(30)
+    const files = [
+      ...globSync('packages/**/locale/en.json', { cwd: root, exclude: ['**/node_modules/**', '**/lib/**', '**/tests/**'] }),
+      ...globSync('vendor/*/locale/en.json', { cwd: root }),
+    ]
+    expect(files.length).toBeGreaterThanOrEqual(218)
     for (const file of files) {
-      const en = JSON.parse(readFileSync(resolve(root, file), 'utf8')) as { meta: Record<string, string> }
       const ja = JSON.parse(readFileSync(resolve(root, file.replace(/en\.json$/, 'ja.json')), 'utf8')) as { meta: Record<string, string> }
-      expect(Object.keys(ja.meta).sort(), file).toEqual(Object.keys(en.meta).sort())
+      // English may omit display fields and use package metadata; Japanese supplies both to avoid that fallback.
+      expect(Object.keys(ja.meta).sort(), file).toEqual(['description', 'title'])
       for (const text of Object.values(ja.meta)) expect(text.trim(), file).not.toBe('')
     }
   })

@@ -184,7 +184,7 @@ describe('disposeRuntimeProcess', () => {
     expect(fake.listenerCount('exit')).toBe(0)
   })
 
-  it.each(['en', 'ja'] as const)('wraps a synchronous forced-termination exception and removes its listeners (%s)', async (language) => {
+  it.each(['en', 'ja', 'zh'] as const)('wraps a synchronous forced-termination exception and removes its listeners (%s)', async (language) => {
     const fake = new FakeChild()
     const failure = new Error('invalid signal state')
     vi.spyOn(fake, 'kill').mockImplementation(() => { throw failure })
@@ -194,12 +194,12 @@ describe('disposeRuntimeProcess', () => {
       { disposeEofGraceMs: 1, disposeGraceMs: 1000 },
       'win32',
       language,
-    )).rejects.toMatchObject({ message: language === 'ja' ? 'SIGKILL が失敗しました' : 'SIGKILL failed', cause: failure })
+    )).rejects.toMatchObject({ message: language === 'ja' ? 'SIGKILL が失敗しました' : language === 'zh' ? 'SIGKILL 失败' : 'SIGKILL failed', cause: failure })
     expect(fake.listenerCount('error')).toBe(0)
     expect(fake.listenerCount('exit')).toBe(0)
   })
 
-  it.each(['en', 'ja'] as const)('bounds a refused forced termination that produces no error or exit (%s)', async (language) => {
+  it.each(['en', 'ja', 'zh'] as const)('bounds a refused forced termination that produces no error or exit (%s)', async (language) => {
     const fake = new FakeChild()
     vi.spyOn(fake, 'kill').mockImplementation((signal) => {
       fake.kills.push(signal)
@@ -211,12 +211,12 @@ describe('disposeRuntimeProcess', () => {
       { disposeEofGraceMs: 1, disposeGraceMs: 10 },
       'win32',
       language,
-    )).rejects.toThrow(language === 'ja' ? 'SIGKILL が拒否されてから 10ms 以内にランタイムプロセスが終了しませんでした' : 'runtime process did not exit within 10ms after SIGKILL was refused')
+    )).rejects.toThrow(language === 'ja' ? 'SIGKILL が拒否されてから 10ms 以内にランタイムプロセスが終了しませんでした' : language === 'zh' ? 'SIGKILL 被拒绝后，运行时进程未在 10ms 内退出' : 'runtime process did not exit within 10ms after SIGKILL was refused')
     expect(fake.listenerCount('error')).toBe(0)
     expect(fake.listenerCount('exit')).toBe(0)
   })
 
-  it.each(['en', 'ja'] as const)('bounds an accepted forced termination that never reports exit (%s)', async (language) => {
+  it.each(['en', 'ja', 'zh'] as const)('bounds an accepted forced termination that never reports exit (%s)', async (language) => {
     const fake = new FakeChild()
     vi.spyOn(fake, 'kill').mockImplementation((signal) => {
       fake.kills.push(signal)
@@ -228,7 +228,7 @@ describe('disposeRuntimeProcess', () => {
       { disposeEofGraceMs: 1, disposeGraceMs: 10 },
       'win32',
       language,
-    )).rejects.toThrow(language === 'ja' ? 'SIGKILL が受理されてから 10ms 以内にランタイムプロセスが終了しませんでした' : 'runtime process did not exit within 10ms after SIGKILL was accepted')
+    )).rejects.toThrow(language === 'ja' ? 'SIGKILL が受理されてから 10ms 以内にランタイムプロセスが終了しませんでした' : language === 'zh' ? 'SIGKILL 已接受后，运行时进程未在 10ms 内退出' : 'runtime process did not exit within 10ms after SIGKILL was accepted')
     expect(fake.listenerCount('error')).toBe(0)
     expect(fake.listenerCount('exit')).toBe(0)
   })

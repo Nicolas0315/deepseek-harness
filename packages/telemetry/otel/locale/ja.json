@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "OpenTelemetry送信サービス",
+    "description": "製品イベントと会話ログに、独立したデータ送信経路を提供します。"
+  }
+}

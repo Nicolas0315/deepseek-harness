@@ -5,11 +5,12 @@
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { join, relative } from 'node:path'
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { flattenDiagnosticMessageText, parseConfigFileTextToJson } from 'typescript'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
 const oxlintCli = fileURLToPath(new URL('../node_modules/oxlint/bin/oxlint', import.meta.url))
@@ -23,17 +24,17 @@ function isUnknownArray(value: unknown): value is unknown[] {
   return Array.isArray(value)
 }
 
-function runRepositoryOxlint(args: readonly string[], env: NodeJS.ProcessEnv = {}) {
-  return spawnSync(process.execPath, [tsxCli, 'scripts/run-oxlint.ts', ...args], {
-    cwd: repositoryRoot,
+function runRepositoryOxlint(args: readonly string[], env: NodeJS.ProcessEnv = {}, cwd = repositoryRoot) {
+  return spawnSync(process.execPath, [tsxCli, join(repositoryRoot, 'scripts/run-oxlint.ts'), ...args], {
+    cwd,
     encoding: 'utf8',
     env: { ...process.env, NO_COLOR: '1', ...env },
   })
 }
 
-function runOxlint(args: readonly string[], env: NodeJS.ProcessEnv = {}) {
+function runOxlint(args: readonly string[], env: NodeJS.ProcessEnv = {}, cwd = repositoryRoot) {
   return spawnSync(process.execPath, [oxlintCli, ...args], {
-    cwd: repositoryRoot,
+    cwd,
     encoding: 'utf8',
     env: { ...process.env, NO_COLOR: '1', ...env },
   })
@@ -43,16 +44,56 @@ function normalizedOutput(result: ReturnType<typeof runOxlint>): string {
   return `${result.stdout}${result.stderr}`.replaceAll('\\', '/')
 }
 
-async function writeContractConfig(suffix: string): Promise<string> {
-  const path = join(repositoryRoot, `.oxlintrc.contract-${suffix}.json`)
+async function writeContractConfig(suffix: string, root = repositoryRoot): Promise<string> {
+  const path = join(root, `.oxlintrc.contract-${suffix}.json`)
   await writeFile(path, JSON.stringify({ extends: ['./.oxlintrc.json'], ignorePatterns: [] }))
   return path
 }
 
+/** Keep package-shaped probes outside workspace scanners while retaining the repository's lint and compiler rules. */
+async function privateContractWorkspace(): Promise<string> {
+  const allocated = await mkdtemp(join(tmpdir(), 'dsh-oxlint-contract-'))
+  onTestFinished(() => rm(allocated, { recursive: true, force: true }))
+  // The compiler service canonicalizes filenames; reference paths must use the same spelling on macOS and Windows.
+  const root = await realpath(allocated)
+  await symlink(join(repositoryRoot, 'node_modules'), join(root, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir')
+  await writeFile(join(root, '.oxlintrc.json'), await readFile(join(repositoryRoot, '.oxlintrc.json')))
+  const projects = [
+    'tsconfig.json', 'tsconfig.host.json', 'tsconfig.client.json',
+    'packages/fs/fs-observation-policy/tsconfig.json',
+    'packages/client/ui-primitives/tsconfig.json',
+    'packages/core/session/tsconfig.json',
+  ]
+  for (const project of projects) {
+    const original = join(repositoryRoot, project)
+    const parsed = parseConfigFileTextToJson(original, await readFile(original, 'utf8'))
+    if (parsed.error !== undefined) throw new Error(flattenDiagnosticMessageText(parsed.error.messageText, '\n'))
+    const config: unknown = parsed.config
+    if (!isRecord(config)) throw new Error(`${project} must contain a config object`)
+    if (typeof config.extends === 'string') config.extends = resolve(dirname(original), config.extends)
+    if (isUnknownArray(config.references)) {
+      const references = config.references.map((reference) => {
+        if (!isRecord(reference) || typeof reference.path !== 'string') throw new Error(`${project} has an invalid project reference`)
+        const actual = resolve(dirname(original), reference.path)
+        return { ...reference, path: project === 'tsconfig.json' ? join(root, relative(repositoryRoot, actual)) : actual }
+      })
+      if (project === 'tsconfig.json') {
+        references.push(...projects.slice(3).map(path => ({ path: join(root, path) })))
+      }
+      config.references = references
+    }
+    const target = join(root, project)
+    await mkdir(dirname(target), { recursive: true })
+    await writeFile(target, JSON.stringify(config))
+  }
+  return root
+}
+
 describe('Oxlint executable contract', () => {
   it('discovers the owning TypeScript project for every file class', async () => {
+    const root = await privateContractWorkspace()
     const suffix = randomUUID()
-    const configPath = await writeContractConfig(suffix)
+    const configPath = await writeContractConfig(suffix, root)
     const probes = [
       ['host package source', 'packages/fs/fs-observation-policy/src', 'packages/fs/fs-observation-policy/tsconfig.json'],
       ['host package test', 'packages/fs/fs-observation-policy/tests', 'tsconfig.host.json'],
@@ -73,20 +114,21 @@ probePromise()
     try {
       const paths: Array<readonly [label: string, path: string, tsconfig: string]> = []
       for (const [label, parent, tsconfig, extension = '.ts'] of probes) {
-        const path = join(repositoryRoot, parent, `oxlint-contract-${suffix}${extension}`)
+        const path = join(root, parent, `oxlint-contract-${suffix}${extension}`)
+        await mkdir(dirname(path), { recursive: true })
         await writeFile(path, source)
-        paths.push([label, relative(repositoryRoot, path), tsconfig])
+        paths.push([label, relative(root, path), tsconfig])
       }
       const clientScript = 'scripts/client-bundle-purity.spec.ts'
 
       const result = runOxlint([
         '--config',
-        relative(repositoryRoot, configPath),
+        relative(root, configPath),
         '--format',
         'unix',
         ...paths.map(([, path]) => path),
-        clientScript,
-      ], { OXC_LOG: 'debug' })
+        join(repositoryRoot, clientScript),
+      ], { OXC_LOG: 'debug' }, root)
       const output = normalizedOutput(result)
 
       expect(result.error).toBeUndefined()
@@ -94,7 +136,7 @@ probePromise()
       for (const [label, path, tsconfig] of paths) {
         expect(output, label).toContain(`${path.replaceAll('\\', '/')}:5:1: Promises must be awaited`)
         expect(output, `${label} project`).toContain(
-          `Got tsconfig for file ${join(repositoryRoot, path).replaceAll('\\', '/')}: ${join(repositoryRoot, tsconfig).replaceAll('\\', '/')}`,
+          `Got tsconfig for file ${join(root, path).replaceAll('\\', '/')}: ${join(root, tsconfig).replaceAll('\\', '/')}`,
         )
       }
       expect(output.match(/typescript\(no-floating-promises\)/g)).toHaveLength(probes.length)
@@ -105,7 +147,7 @@ probePromise()
     } finally {
       await Promise.all([
         ...probes.map(([, parent, , extension = '.ts']) =>
-          rm(join(repositoryRoot, parent, `oxlint-contract-${suffix}${extension}`), { force: true })),
+          rm(join(root, parent, `oxlint-contract-${suffix}${extension}`), { force: true })),
         rm(configPath, { force: true }),
       ])
     }
@@ -259,8 +301,9 @@ export const longProbe = 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 +
   }, 90_000)
 
   it('allows Session history reads only in tests or with existing-call waivers', async () => {
+    const root = await privateContractWorkspace()
     const suffix = randomUUID()
-    const configPath = await writeContractConfig(suffix)
+    const configPath = await writeContractConfig(suffix, root)
     const exampleRoot = `examples/oxlint-contract-${suffix}`
     const examplePath = `${exampleRoot}/tests/reads.ts`
     const testPaths = [
@@ -303,26 +346,27 @@ export function unrelatedRead(): void {
 `
 
     try {
-      await mkdir(join(repositoryRoot, exampleRoot, 'tests'), { recursive: true })
-      await writeFile(join(repositoryRoot, exampleRoot, 'tsconfig.json'), JSON.stringify({
-        extends: '../../tsconfig.base.json',
+      await Promise.all(paths.map(path => mkdir(dirname(join(root, path)), { recursive: true })))
+      await mkdir(join(root, exampleRoot, 'tests'), { recursive: true })
+      await writeFile(join(root, exampleRoot, 'tsconfig.json'), JSON.stringify({
+        extends: join(repositoryRoot, 'tsconfig.base.json'),
         include: ['tests/**/*.ts'],
       }))
       await Promise.all([
-        ...testPaths.map(path => writeFile(join(repositoryRoot, path), reads)),
-        ...productionPaths.map(path => writeFile(join(repositoryRoot, path), existing)),
+        ...testPaths.map(path => writeFile(join(root, path), reads)),
+        ...productionPaths.map(path => writeFile(join(root, path), existing)),
       ])
-      const args = ['--config', relative(repositoryRoot, configPath), '--format', 'unix', ...paths]
-      const allowed = runRepositoryOxlint(args)
+      const args = ['--config', relative(root, configPath), '--format', 'unix', ...paths]
+      const allowed = runRepositoryOxlint(args, {}, root)
       expect(allowed.error).toBeUndefined()
       expect(allowed.signal).toBeNull()
       expect(allowed.status, normalizedOutput(allowed)).toBe(0)
 
       await Promise.all([
-        ...testPaths.map(path => writeFile(join(repositoryRoot, path), reads + unrelated)),
-        ...productionPaths.map(path => writeFile(join(repositoryRoot, path), reads)),
+        ...testPaths.map(path => writeFile(join(root, path), reads + unrelated)),
+        ...productionPaths.map(path => writeFile(join(root, path), reads)),
       ])
-      const rejected = runRepositoryOxlint(args)
+      const rejected = runRepositoryOxlint(args, {}, root)
       const output = normalizedOutput(rejected)
       expect(rejected.error).toBeUndefined()
       expect(rejected.signal).toBeNull()
@@ -344,8 +388,8 @@ export function unrelatedRead(): void {
       )
     } finally {
       await Promise.all([
-        ...paths.filter(path => path !== examplePath).map(path => rm(join(repositoryRoot, path), { force: true })),
-        rm(join(repositoryRoot, exampleRoot), { recursive: true, force: true }),
+        ...paths.filter(path => path !== examplePath).map(path => rm(join(root, path), { force: true })),
+        rm(join(root, exampleRoot), { recursive: true, force: true }),
         rm(configPath, { force: true }),
       ])
     }

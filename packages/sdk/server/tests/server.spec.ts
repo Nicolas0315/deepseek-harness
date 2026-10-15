@@ -17,7 +17,7 @@ import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-test
 import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 
 import SessionStore, { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek-api-key'
 import SubagentRuntime, { SubagentRunId, type SubagentStartRequest, type SubagentRun, type SubagentResult, type SubagentRunEndInfo } from '@deepseek-ai/dsh-subagent'
 import type { JsonRpcTransportPeer } from '@deepseek-ai/dsh-sdk-protocol'
@@ -100,7 +100,7 @@ async function settleSubagent(
   const result = Promise.withResolvers<SubagentResult>()
   const disposeProvider = ctx.subagents.registerProvider({
     name: info.provider,
-    capabilities: { agentOptions: false, outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+    capabilities: { agentOptions: false, agentPreset: false, outputSchema: false, depthLimit: false },
     inheritsParentContext: false,
     async start() {
       return {
@@ -130,7 +130,7 @@ async function settleSubagent(
 }
 
 describe('HarnessSdkJsonRpcServer', () => {
-  it.each(['en', 'ja'] as const)('waits only for an existing SDK-owned session and includes a child-triggered root turn (%s)', async (language) => {
+  it.each(['en', 'ja', 'zh'] as const)('waits only for an existing SDK-owned session and includes a child-triggered root turn (%s)', async (language) => {
     const storageDir = await mkdtemp(join(tmpdir(), 'dsh-jsonrpc-wait-'))
     const ctx = await makeHarness(storageDir)
     const transport = new FakeTransport()
@@ -148,12 +148,17 @@ describe('HarnessSdkJsonRpcServer', () => {
     }
     ctx.llm.registerAdapter(['mock'], new Adapter())
     try {
-      await expect(server.handleRequest('session/wait', { sessionId: 'missing' })).rejects.toThrow(language === 'ja' ? '初期化されていません' : 'not initialized')
+      await expect(server.handleRequest('session/wait', { sessionId: 'missing' })).rejects.toThrow(language === 'ja' ? '初期化されていません' : language === 'zh' ? '未初始化' : 'not initialized')
       await server.initialize({ cwd: storageDir, provider: 'mock', model: 'mock' })
-      await expect(server.handleRequest('session/wait', {})).rejects.toThrow(language === 'ja' ? '文字列の sessionId' : 'sessionId string')
-      await expect(server.handleRequest('session/wait', { sessionId: 'missing' })).rejects.toThrow(language === 'ja' ? '不明な SDK セッションです' : 'unknown SDK session')
+      await expect(server.handleRequest('session/wait', {})).rejects.toThrow(language === 'ja' ? '文字列の sessionId' : language === 'zh' ? '字符串 sessionId' : 'sessionId string')
+      await expect(server.handleRequest('session/wait', { sessionId: 'missing' })).rejects.toThrow(language === 'ja' ? '不明な SDK セッションです' : language === 'zh' ? '未知 SDK 会话' : 'unknown SDK session')
       expect(ctx.agents.get(SessionId('missing'))).toBeUndefined()
       await server.prompt({ sessionId: 'main', contentBlocks: [{ type: 'text', text: 'delegate' }] })
+      await expect(server.resume({ sessionId: 'main' })).rejects.toThrow({
+        en: 'SDK session is already open or opening: main',
+        ja: 'SDK セッションはすでに開かれているか、復元中です: main',
+        zh: 'SDK 会话已打开或正在恢复：main',
+      }[language])
       const parent = ctx.agents.get(SessionId('main'))!
       const observed = Promise.withResolvers<undefined>()
       const children = Promise.withResolvers<boolean>()
@@ -171,7 +176,7 @@ describe('HarnessSdkJsonRpcServer', () => {
         && notification.params?.sessionId === 'main'
         && (notification.params.event as SessionEvent).type === 'turn/end')).toHaveLength(2)
       await server.shutdown()
-      await expect(server.handleRequest('session/wait', { sessionId: 'main' })).rejects.toThrow(language === 'ja' ? '不明な SDK セッションです' : 'unknown SDK session')
+      await expect(server.handleRequest('session/wait', { sessionId: 'main' })).rejects.toThrow(language === 'ja' ? '不明な SDK セッションです' : language === 'zh' ? '未知 SDK 会话' : 'unknown SDK session')
     } finally {
       await server.shutdown()
       await ctx.fiber.dispose()
@@ -361,7 +366,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     await server.shutdown()
   })
 
-  it.each(['en', 'ja'] as const)('rejects inline SDK images when the composition has no attachment store (%s)', async (language) => {
+  it.each(['en', 'ja', 'zh'] as const)('rejects inline SDK images when the composition has no attachment store (%s)', async (language) => {
     const followup = vi.fn<Agent['followup']>()
     const agent = ({ id: SessionId('image'), followup } satisfies Pick<Agent, 'id' | 'followup'>) as unknown as Agent
     const handle = { agent, dispose: vi.fn(() => Promise.resolve()) }
@@ -377,7 +382,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     await expect(server.prompt({
       sessionId: 'image',
       contentBlocks: [{ type: 'image', data: 'AQ==', mimeType: 'image/png' }],
-    })).rejects.toThrow(language === 'ja' ? 'SDK の画像プロンプトには添付ファイルストアが必要です' : 'SDK image prompt requires an attachment store')
+    })).rejects.toThrow(language === 'ja' ? 'SDK の画像プロンプトには添付ファイルストアが必要です' : language === 'zh' ? 'SDK 图像提示需要附件存储' : 'SDK image prompt requires an attachment store')
     expect(followup).not.toHaveBeenCalled()
     await server.shutdown()
   })
@@ -418,7 +423,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     await server.shutdown()
   })
 
-  it.each(['en', 'ja'] as const)('rejects a prompt for a session whose agent was disposed outside the server (%s)', async (language) => {
+  it.each(['en', 'ja', 'zh'] as const)('rejects a prompt for a session whose agent was disposed outside the server (%s)', async (language) => {
     const followup = vi.fn<Agent['followup']>()
     const agent = ({
       id: SessionId('zombie'),
@@ -447,7 +452,7 @@ describe('HarnessSdkJsonRpcServer', () => {
 
     expect((await prompt('while live')).messageId).toBeTypeOf('string')
     live = false
-    await expect(prompt('after detach')).rejects.toThrow(language === 'ja' ? 'セッションのエージェントがサーバーの外部で破棄されました: zombie' : 'session agent was disposed outside the server: zombie')
+    await expect(prompt('after detach')).rejects.toThrow(language === 'ja' ? 'セッションのエージェントがサーバーの外部で破棄されました: zombie' : language === 'zh' ? '会话代理已在服务器外释放：zombie' : 'session agent was disposed outside the server: zombie')
     // The detached agent was never driven by the rejected prompt.
     expect(followup).toHaveBeenCalledOnce()
     await server.shutdown()
@@ -710,7 +715,10 @@ describe('HarnessSdkJsonRpcServer', () => {
       let starts = 0
       const disposeProvider = ctx.subagents.registerProvider({
         name: 'reused',
-        capabilities: { agentOptions: false, outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+        capabilities: {
+          agentOptions: false, agentPreset: false, outputSchema: false,
+          depthLimit: false,
+        },
         inheritsParentContext: false,
         start() {
           const result = results[starts]
@@ -806,7 +814,10 @@ describe('HarnessSdkJsonRpcServer', () => {
       const remoteResult = Promise.withResolvers<SubagentResult>()
       const unregisterLocal = ctx.subagents.registerProvider({
         name: 'reused-provider',
-        capabilities: { agentOptions: false, outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+        capabilities: {
+          agentOptions: false, agentPreset: false, outputSchema: false,
+          depthLimit: false,
+        },
         inheritsParentContext: false,
         start: () => Promise.resolve({
           id: SessionId('provider-reuse-child'),
@@ -823,7 +834,10 @@ describe('HarnessSdkJsonRpcServer', () => {
 
       const unregisterRemote = ctx.subagents.registerProvider({
         name: 'reused-provider',
-        capabilities: { agentOptions: false, outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+        capabilities: {
+          agentOptions: false, agentPreset: false, outputSchema: false,
+          depthLimit: false,
+        },
         inheritsParentContext: false,
         start: () => Promise.resolve({
           id: SessionId('provider-reuse-child'),
@@ -904,7 +918,10 @@ describe('HarnessSdkJsonRpcServer', () => {
       const missedStartResult = Promise.withResolvers<SubagentResult>()
       const disposeMissedStartProvider = ctx.subagents.registerProvider({
         name: 'fork',
-        capabilities: { agentOptions: false, outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+        capabilities: {
+          agentOptions: false, agentPreset: false, outputSchema: false,
+          depthLimit: false,
+        },
         inheritsParentContext: true,
         start: () => Promise.resolve({
           id: SessionId('fallback-child-session'),
@@ -1186,7 +1203,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     }
   })
 
-  it.each(['en', 'ja'] as const)('coalesces concurrent session creation and retries a failed creation (%s)', async (language) => {
+  it.each(['en', 'ja', 'zh'] as const)('coalesces concurrent session creation and retries a failed creation (%s)', async (language) => {
     let resolveShared: ((handle: AgentHandle) => void) | undefined
     const sharedCreation = new Promise<AgentHandle>((resolve) => { resolveShared = resolve })
     const sharedHandle = { agent: {} as Agent, dispose: vi.fn(() => Promise.resolve()) }
@@ -1216,7 +1233,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     await server.shutdown()
     expect(sharedHandle.dispose).toHaveBeenCalledOnce()
     expect(retryHandle.dispose).toHaveBeenCalledOnce()
-    await expect(server['getOrCreateSession']('after-shutdown')).rejects.toThrow(language === 'ja' ? 'SDK サーバーは終了処理中です' : 'SDK server is shutting down')
+    await expect(server['getOrCreateSession']('after-shutdown')).rejects.toThrow(language === 'ja' ? 'SDK サーバーは終了処理中です' : language === 'zh' ? 'SDK 服务器正在关闭' : 'SDK server is shutting down')
   })
 
   it('resolves a relative cwd before creating the session', async () => {
@@ -1255,7 +1272,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     }
   })
 
-  it.each(['en', 'ja'] as const)('settles every teardown and aggregates multiple failures (%s)', async (language) => {
+  it.each(['en', 'ja', 'zh'] as const)('settles every teardown and aggregates multiple failures (%s)', async (language) => {
     const firstDispose = vi.fn(() => { throw new Error('first teardown failed') })
     const secondDispose = vi.fn(() => Promise.reject(new Error('second teardown failed')))
     const ctx = {
@@ -1267,7 +1284,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     server['sessions'].set('first', { handle: { agent: {} as Agent, dispose: firstDispose }, failure: undefined })
     server['sessions'].set('second', { handle: { agent: {} as Agent, dispose: secondDispose }, failure: undefined })
 
-    await expect(server.shutdown()).rejects.toThrow(language === 'ja' ? 'SDK サーバーの後処理が失敗しました' : 'SDK server teardown failed')
+    await expect(server.shutdown()).rejects.toThrow(language === 'ja' ? 'SDK サーバーの後処理が失敗しました' : language === 'zh' ? 'SDK 服务器清理失败' : 'SDK server teardown failed')
     expect(firstDispose).toHaveBeenCalledOnce()
     expect(secondDispose).toHaveBeenCalledOnce()
   })

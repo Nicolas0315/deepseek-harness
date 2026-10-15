@@ -144,6 +144,8 @@ const GENERIC_SKIPS: readonly GenericSkip[] = [
 // persisted id, event topic, or user-facing name. A newly added package
 // specifier still follows the rescope below.
 const PRODUCT_CORDIS_FILES = new Set([
+  'docs/upgrade-guide/v0.2.1-alpha.1/subagent-preset-composition/guide.md',
+  'docs/upgrade-guide/v0.2.1-alpha.1/subagent-preset-composition/guide.zh.md',
   'apps/cli/tests/optional-bundle-transitions.e2e.ts',
   'apps/web/tests/agent-preset-selection.e2e.ts',
   'apps/web/tests/developer-tools-settings.e2e.ts',

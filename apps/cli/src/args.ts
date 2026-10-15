@@ -24,7 +24,7 @@ import { Command, CommanderError, InvalidArgumentError } from 'commander'
 interface ProfileInvocation {
   mode: 'profile'
   profile: string
-  /** Shipped template used once to initialize a missing profile. */
+  /** Shipped template that replaces the named profile. */
   fromDefaultProfile?: string | undefined
   /** Extra patch-list overlays applied after the profile's own layer, in argv order. */
   patches: string[]
@@ -36,7 +36,7 @@ interface ProfileInvocation {
 interface DumpConfigInvocation {
   mode: 'dump-config'
   profile: string
-  /** Shipped template used once to initialize a missing profile. */
+  /** Shipped template that replaces the named profile. */
   fromDefaultProfile?: string | undefined
   /** Omit the profile's user layer and --patch overlays; print bundle layers only. */
   defaultOnly: boolean
@@ -47,7 +47,7 @@ interface DumpConfigInvocation {
 interface DumpConfigSchemaInvocation {
   mode: 'dump-config-schema'
   profile: string
-  /** Shipped template used once to initialize a missing profile. */
+  /** Shipped template that replaces the named profile. */
   fromDefaultProfile?: string | undefined
   patches: string[]
 }
@@ -163,7 +163,7 @@ export function parseDshArgs(
     .enablePositionalOptions()
     .argument('[args...]', messages.argumentsForTheBootedProfileSAppSeeDsh)
     .option('--profile <name>', messages.theProfileUnderDSHHOMEProfilesToBoot, (value, previous) => selectProfile(value, previous, locale))
-    .option('--from-default-profile <name>', messages.initializeANewCustomProfileFromAShippedProfile)
+    .option('--from-default-profile <name>', messages.replaceCustomProfileFromAShippedProfile)
     .option('--patch <path>', messages.extraPatchListOverlayAppliedAfterTheProfileLayer, collect)
     .option('--dump-config', messages.printTheComposedProfileTreeAndExit)
     .option('--dump-config-schema', messages.printJSONSchemaForProfileEntriesAndPatchesWithout)

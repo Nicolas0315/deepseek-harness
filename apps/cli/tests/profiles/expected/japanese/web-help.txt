@@ -7,7 +7,7 @@ DeepSeek Harness のブラウザー UI を提供します。
                                  アドレス。ワイルドカードは禁止
   --no-open                      既定のブラウザーで Web UI を開かない
   --port <port>                  待ち受けポート。0 を指定すると OS が空きポートを選択
-  --public-url <url>             表示、ブラウザー起動、web-surface、DSH_WEB_URL に使用する
+  --public-url <url>             表示、ブラウザー起動、runtime-context、DSH_WEB_URL に使用する
                                  HTTP(S) ルート。信頼の許可にはならない
   --trusted-host <authority...>  /api のブラウザー信頼検証で追加許可するホスト（host または
                                  host:port、複数回指定可能）

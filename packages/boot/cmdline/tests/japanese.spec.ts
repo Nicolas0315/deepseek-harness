@@ -1,3 +1,6 @@
+import { Context } from '@deepseek-ai/cordis'
+import { createLaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
+import { exitOnStdinEnd, parseCmdline, provideCmdline } from '../src/index.ts'
 import { describe, expect, it } from 'vitest'
 import { Command } from 'commander'
 import { configureCommandLocale, formatCommandError } from '../src/diagnostics.ts'
@@ -49,4 +52,36 @@ it('resolves independent immutable launch environments without changing the proc
     await japanese.fiber.dispose()
     await english.fiber.dispose()
   }
+})
+
+it.each([
+  ['en', 'launcher must provide', 'no command in the program declares an action'],
+  ['ja', '起動元はプラグインの読み込み前に', '実行処理を持つコマンドがありません'],
+  ['zh', '启动器必须在挂载树之前提供', '程序中没有命令声明操作'],
+] as const)('reports missing launcher services and actions in the invocation language (%s)', async (language, missingHost, missingAction) => {
+  const ctx = new Context()
+  try {
+    ctx.provide('launchEnvironment', createLaunchEnvironmentSnapshot([{ source: 'process', values: { DSH_LANG: language } }]))
+    const command = new Command().name('日本語-app')
+    expect(() => { parseCmdline(ctx, command) }).toThrow(missingHost)
+    expect(() => { parseCmdline(ctx, command) }).toThrow('日本語-app')
+    expect(() => { exitOnStdinEnd(ctx, 'fixture.stdin') }).toThrow(missingHost)
+    expect(() => { exitOnStdinEnd(ctx, 'fixture.stdin') }).toThrow('ctx.appReady')
+    provideCmdline(ctx, { args: [], exit: () => {} })
+    expect(() => { parseCmdline(ctx, command) }).toThrow(missingAction)
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})
+
+it.each(['ja', 'zh'] as const)('preserves custom help headings and application errors on a nested command (%s)', (language) => {
+  const root = new Command().name('dsh')
+  const child = root.command('日本語-child').exitOverride()
+  const output: string[] = []
+  child.configureOutput({ writeErr: (message) => { output.push(message) } })
+  configureCommandLocale(root, language)
+  expect(child.createHelp().styleTitle('Custom 日本語:')).toBe('Custom 日本語:')
+  expect(formatCommandError(language, 'raw application detail')).toBe('raw application detail')
+  expect(() => { child.error('raw application detail') }).toThrow('raw application detail')
+  expect(output.join('')).toContain('raw application detail')
 })

@@ -36,7 +36,7 @@ const state = vi.hoisted(() => ({
   listeners: new Map<string, (...args: unknown[]) => void>(),
   contents: undefined as { mainFrame: { url: string } } | undefined,
   windowOptions: undefined as BrowserWindowConstructorOptions | undefined,
-  menu: vi.fn(),
+  menu: vi.fn(() => ({ items: [] })),
   operations: undefined as WelcomeOperations | undefined,
   nativeTheme: { themeSource: 'system', shouldUseDarkColors: false },
 }))

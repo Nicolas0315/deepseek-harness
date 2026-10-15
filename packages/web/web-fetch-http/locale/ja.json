@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "公開Webページの取得",
+    "description": "サインイン不要のHTTPまたはHTTPSのWebページを読み取ります。"
+  }
+}

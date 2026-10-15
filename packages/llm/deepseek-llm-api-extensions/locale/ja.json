@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DeepSeek API拡張",
+    "description": "他のプラグインがDeepSeekモデルへのリクエストに拡張フィールドを追加できるようにします。"
+  }
+}

@@ -1,17 +1,19 @@
 /** Exact-path watching for live profile patch files outside Cordis module roots. */
-import { dirname, relative, resolve } from 'node:path'
+import { dirname, relative, resolve, sep } from 'node:path'
 import { realpath, stat } from 'node:fs/promises'
 import { watch, type ChokidarOptions } from 'chokidar'
 import type { Context } from '@deepseek-ai/cordis'
+import { hmrMessages, resolveHmrLocale, type HmrMessages } from './diagnostics.ts'
+import type { DiagnosticLocale } from '@deepseek-ai/dsh-diagnostic-locale'
 
 const registrations = new WeakMap<Context, Set<string>>()
 
-async function findWatchRoot(filename: string): Promise<{ filename: string; root: string; depth: number }> {
+async function findWatchRoot(filename: string, messages: HmrMessages): Promise<{ filename: string; root: string; depth: number }> {
   let root = dirname(filename)
   let depth = 0
   while (true) {
     try {
-      if (!(await stat(root)).isDirectory()) throw new Error(`config watch parent is not a directory: ${root}`)
+      if (!(await stat(root)).isDirectory()) throw new Error(messages.watchParent(root))
       const canonicalRoot = await realpath(root)
       return { filename: resolve(canonicalRoot, relative(root, filename)), root: canonicalRoot, depth }
     } catch (error) {
@@ -25,27 +27,35 @@ async function findWatchRoot(filename: string): Promise<{ filename: string; root
 }
 
 /**
- * Watch one patch path, including missing parents, and serialize refresh callbacks.
+ * Watch one patch path and its parent chain without subscribing to sibling files or directories.
+ * Missing parents are observed as they appear; refresh callbacks run serially.
  * @param ctx Context that owns watcher disposal and receives refresh failures.
  * @param filename Absolute patch-file path.
  * @param options Deployment watcher options; configuration watches enable write stabilization by default.
  * @param refresh Callback for additions, changes, and removals.
  * @param inTransaction Whether disposal is running inside the refresh being removed.
+ * @param language Captured diagnostic language; omission resolves the context launch environment once.
  * @returns A disposer that closes the watcher and drains its current refresh.
  * @throws When path resolution, watcher startup, or effect registration fails.
  */
 export async function watchConfig(
   ctx: Context, filename: string, options: ChokidarOptions, refresh: () => Promise<void> | void,
   inTransaction: () => boolean = () => false,
+  language: DiagnosticLocale = resolveHmrLocale(ctx),
 ): Promise<() => Promise<void>> {
-  const target = await findWatchRoot(filename)
+  const messages = hmrMessages(language)
+  const target = await findWatchRoot(filename, messages)
   const paths = registrations.get(ctx) ?? new Set<string>()
   registrations.set(ctx, paths)
-  if (paths.has(target.filename)) throw new Error(`config path already registered: ${filename}`)
+  if (paths.has(target.filename)) throw new Error(messages.registered(filename))
   const { cwd: _cwd, ignored: _ignored, ...watchOptions } = options
   const watcher = watch(target.root, {
     // Stabilized events bypass Chokidar's lossy 50 ms change-event throttle.
     awaitWriteFinish: true, ...watchOptions, depth: target.depth, ignoreInitial: false,
+    ignored: (path) => {
+      const remainder = relative(resolve(path), target.filename)
+      return remainder === '..' || remainder.startsWith(`..${sep}`)
+    },
   })
   paths.add(target.filename)
   const state = { dirty: false }
@@ -62,7 +72,7 @@ export async function watchConfig(
           await refresh()
         } catch (reason) {
           const error = reason instanceof Error ? reason : new Error(String(reason), { cause: reason })
-          ctx.logger.warn('config reload at %C failed', filename)
+          ctx.logger.warn(messages.configFailed, filename)
           ctx.logger.warn(error)
         }
       }

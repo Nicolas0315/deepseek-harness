@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DeepSeek APIキーの接続",
+    "description": "APIキーを使ってDeepSeekモデルサービスへ接続します。"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "永続PowerShellツール",
+    "description": "状態を保持するPowerShellセッションで、AIが継続してコマンドを実行できるようにします。"
+  }
+}

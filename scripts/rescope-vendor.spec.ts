@@ -52,6 +52,8 @@ describe('rescope file selection', () => {
     'packages/extensions/cordis-host-runner/tests/inspect-registry.spec.ts',
     'snapshots/session/cordis-inspect-liveness/client-fixture.mjs',
     'snapshots/session/cordis-inspect-timeout/client-fixture.mjs',
+    'docs/upgrade-guide/v0.2.1-alpha.1/subagent-preset-composition/guide.md',
+    'docs/upgrade-guide/v0.2.1-alpha.1/subagent-preset-composition/guide.zh.md',
   ])('preserves the Cordis product identifier in %s', (file) => {
     expect(isRescopeSkipped(file, CORDIS_PRESET_ID)).toBe(true)
     for (const packageSpecifier of CORDIS_PACKAGE_SPECIFIERS) {

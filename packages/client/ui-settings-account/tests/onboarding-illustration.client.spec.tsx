@@ -42,15 +42,15 @@ it.each([['en', en, ''], ['zh', zh, '-zh']] as const)('retains the %s light and 
   const { container, rerender } = render(<OnboardingWelcomeStep locale={locale} t={key => copy[key]}
     heading={createRef<HTMLHeadingElement>()} busy={false} onStart={() => {}} />)
   expect(Array.from(container.querySelectorAll('img'), image => image.getAttribute('src'))).toEqual([
-    expect.stringContaining(`onboarding-welcome${suffix}.png`),
-    expect.stringContaining(`onboarding-welcome${suffix}-dark.png`),
+    expect.stringContaining(`onboarding-welcome${suffix}.webp`),
+    expect.stringContaining(`onboarding-welcome${suffix}-dark.webp`),
   ])
   rerender(<OnboardingCreditStep locale={locale} t={key => copy[key]}
     heading={createRef<HTMLHeadingElement>()} busy={false} funded={false} canRecharge
     onContinue={() => {}} onRecharge={() => {}} onLater={() => {}} />)
   expect(Array.from(container.querySelectorAll('img'), image => image.getAttribute('src'))).toEqual([
-    expect.stringContaining(`onboarding-recharge${suffix}.png`),
-    expect.stringContaining(`onboarding-recharge${suffix}-dark.png`),
+    expect.stringContaining(`onboarding-recharge${suffix}.webp`),
+    expect.stringContaining(`onboarding-recharge${suffix}-dark.webp`),
   ])
 })
 

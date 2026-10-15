@@ -59,6 +59,7 @@ function fixture(worktreeName = 'worktree'): Fixture {
   git(root, ['config', 'user.email', 'change-scope@example.com'])
   git(root, ['config', 'user.name', 'Change Scope Tests'])
   git(root, ['config', 'commit.gpgsign', 'false'])
+  git(root, ['config', 'tag.gpgSign', 'false'])
   git(root, ['config', 'core.hooksPath', hooks])
   write(join(root, 'README.md'), '# Fixture\n')
   git(root, ['add', 'README.md'])

@@ -312,6 +312,8 @@ export const zh = {
   'row.input': '输入',
   'row.output': '输出',
   'row.inspect': '查看',
+  'row.imageSize': '{width}x{height}px，{bytes} 字节',
+  'row.imageSizeDownscaled': '{width}x{height}px（由 {originalWidth}x{originalHeight}px 缩小），{bytes} 字节',
   'tool.title.search': '搜索',
   'tool.title.read': '读取',
   'tool.title.bash': '运行命令',
@@ -690,6 +692,8 @@ export const en = {
   'row.input': 'IN',
   'row.output': 'OUT',
   'row.inspect': 'Inspect',
+  'row.imageSize': '{width}x{height}px, {bytes} bytes',
+  'row.imageSizeDownscaled': '{width}x{height}px (downscaled from {originalWidth}x{originalHeight}px), {bytes} bytes',
   'tool.title.search': 'Search',
   'tool.title.read': 'Read',
   'tool.title.bash': 'Bash',
@@ -764,6 +768,8 @@ export const en = {
 
 /** Japanese dictionary, checked against the conversation key set. */
 export const ja = {
+  'row.imageSize': '{width}x{height}px、{bytes} バイト',
+  'row.imageSizeDownscaled': '{width}x{height}px（{originalWidth}x{originalHeight}px から縮小）、{bytes} バイト',
   'shortcut.newline': '改行',
   'shortcut.complementary': 'キュー追加／割り込みのもう一方の操作を実行',
   'shortcut.slash': 'コマンドメニューを開く',

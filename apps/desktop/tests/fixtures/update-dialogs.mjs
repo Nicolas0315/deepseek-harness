@@ -10,19 +10,39 @@ import { DesktopUpdateOverlays } from '../../lib/types/update-overlay.js'
 import { DesktopBackgroundNotice } from '../../lib/types/background-notice.js'
 import { desktopUpdateReadyConfirmation } from '../../lib/types/locale.js'
 
-async function rendered(window) {
-  await window.webContents.executeJavaScript(`new Promise((resolve, reject) => {
+async function rendered(window, contents = window.webContents) {
+  await contents.executeJavaScript(`new Promise((resolve, reject) => {
     const observer = new MutationObserver(check);
     const deadline = setTimeout(() => { observer.disconnect(); reject(new Error('Dialog did not render')); }, 10000);
     function check() { if (document.querySelector('main:not([hidden])')) { observer.disconnect(); clearTimeout(deadline); resolve(); } }
     observer.observe(document, { subtree: true, attributes: true }); check();
   })`)
+  if (!window.isVisible()) await once(window, 'show', { signal: AbortSignal.timeout(10_000) })
+  await contents.executeJavaScript(`new Promise((resolve, reject) => requestAnimationFrame(() => {
+    Promise.all(document.getAnimations().map(animation => animation.finished))
+      .then(() => requestAnimationFrame(resolve), reject);
+  }))`)
+}
+
+/** Capture painted dialog content from its own document or the Windows embedded frame. */
+export async function captureRenderedWindow(window, name, contents = window.webContents) {
+  await rendered(window, contents)
+  const image = await window.webContents.capturePage()
+  const pixels = image.toBitmap()
+  assert.ok(pixels.length > 0 && pixels.some((value, index) => value !== pixels[index % 4]),
+    `Update dialog screenshot must contain rendered content: ${name}`)
+  return image
 }
 
 /** Exercise cancellation and explicit installation through the production preload and renderer. */
 export async function qualifyUpdateDialogs(root, fixture, locale) {
   const messages = locale.messages
   const screenshots = []
+  async function capture(window, name) {
+    const image = await captureRenderedWindow(window, name)
+    await writeFile(join(root, name), image.toPNG())
+    screenshots.push(name)
+  }
   protocol.handle('dsh-app', async request => {
     const name = new URL(request.url).pathname.slice(1)
     assert.ok(['update-dialog.html', 'update-dialog.js', 'update-dialog.css', 'update-close.svg'].includes(name))
@@ -74,8 +94,7 @@ export async function qualifyUpdateDialogs(root, fixture, locale) {
         document.activeElement.textContent`), options.buttons.at(-1))
       await window.webContents.executeJavaScript("document.getElementById('dialog').focus()")
       const name = active ? 'update-active-tasks.png' : 'update-ready.png'
-      await writeFile(join(root, name), (await window.webContents.capturePage()).toPNG())
-      screenshots.push(name)
+      await capture(window, name)
       const closed = once(window, 'closed', { signal: AbortSignal.timeout(10_000) })
       if (active) {
         await window.webContents.executeJavaScript("setTimeout(() => document.querySelector('.primary').click(), 0); undefined")
@@ -109,8 +128,7 @@ export async function qualifyUpdateDialogs(root, fixture, locale) {
         })()`), true)
       }
       const name = expanded ? 'update-error-expanded.png' : 'update-error-collapsed.png'
-      await writeFile(join(root, name), (await errorWindow.webContents.capturePage()).toPNG())
-      screenshots.push(name)
+      await capture(errorWindow, name)
     }
     assert.deepEqual(f.installations, [[true, true]])
     errorWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' })
@@ -141,9 +159,7 @@ export async function qualifyUpdateDialogs(root, fixture, locale) {
         const closedNotice = once(noticeWindow, 'closed', { signal: AbortSignal.timeout(10_000) })
         if (confirm) {
           const name = 'background-close-confirmation.png'
-          await noticeWindow.webContents.executeJavaScript(`Promise.all(document.getAnimations().map(animation => animation.finished))`)
-          await writeFile(join(root, name), (await noticeWindow.webContents.capturePage()).toPNG())
-          screenshots.push(name)
+          await capture(noticeWindow, name)
           await noticeWindow.webContents.executeJavaScript("setTimeout(() => document.querySelector('.primary').click(), 0); undefined")
           await hidden.promise
         } else noticeWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' })

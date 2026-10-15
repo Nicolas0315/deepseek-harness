@@ -165,8 +165,9 @@ export const zh = {
   'message.retry.delay': '重试延迟：',
   'message.retry.failure': '失败原因：',
   'message.failure.auth': 'API 密钥无效',
-  'message.accountStopped': '任务已停止',
+  'message.taskStopped': '任务已停止',
   'message.failure.accountSignedOut': '任务已因退出 DeepSeek 登录而停止。',
+  'message.failure.interrupted': 'DSH 进程在本轮完成前退出（例如被强制结束、崩溃或关闭超时），重新启动后本轮已中止。未完成的工具调用结果未知。',
   'message.failure.accountSignInRequired': '请先登录 DeepSeek，并确认请求地址支持账号认证。',
   'message.failure.quota': '当前请求的额度已用尽',
   'message.turnError': '本轮运行失败',
@@ -362,8 +363,9 @@ export const en = {
   'message.retry.delay': 'Retry delay: ',
   'message.retry.failure': 'Failure reason: ',
   'message.failure.auth': 'API key is invalid',
-  'message.accountStopped': 'Task stopped',
+  'message.taskStopped': 'Task stopped',
   'message.failure.accountSignedOut': 'Stopped because you signed out of DeepSeek.',
+  'message.failure.interrupted': 'The DSH process exited before this turn finished (for example, it was killed, crashed, or timed out while shutting down), so the turn was closed when DSH restarted. Unfinished tool calls have unknown outcomes.',
   'message.failure.accountSignInRequired': 'Sign in to DeepSeek and ensure the request destination supports account authentication.',
   'message.failure.quota': 'Request quota exhausted.',
   'message.turnError': 'This turn failed',
@@ -396,6 +398,8 @@ export const en = {
 
 /** Japanese dictionary, checked against the chat key set. */
 export const ja = {
+  'message.taskStopped': 'タスクを停止しました',
+  'message.failure.interrupted': 'このターンの完了前に DSH プロセスが終了したため（強制終了、クラッシュ、終了処理のタイムアウトなど）、DSH の再起動時にターンを中断しました。未完了のツール呼び出しの結果は不明です。',
   'message.stepProcess.thinking': 'リクエストを分析中',
   'message.stepProcess.read': 'ファイルを読み取り中',
   'message.stepProcess.readImage': '画像を読み取り中',
@@ -556,7 +560,6 @@ export const ja = {
   'message.retry.delay': '再試行までの時間：',
   'message.retry.failure': '失敗の理由：',
   'message.failure.auth': 'API キーが無効です',
-  'message.accountStopped': 'タスクを停止しました',
   'message.failure.accountSignedOut': 'DeepSeek からサインアウトしたため停止しました。',
   'message.failure.accountSignInRequired': 'DeepSeek にサインインし、リクエスト先がアカウント認証に対応していることを確認してください。',
   'message.failure.quota': 'リクエストの利用枠を使い切りました。',

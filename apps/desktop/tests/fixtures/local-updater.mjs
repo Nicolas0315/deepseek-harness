@@ -17,7 +17,7 @@ import { DesktopMandatoryUpdatePolicy, resolveDesktopPolicyConfig } from '../../
 import { DesktopMandatoryUpdateWindow } from '../../lib/types/mandatory-update-window.js'
 import { DesktopUpdatePreparationError } from '../../lib/types/update-error.js'
 import { DesktopUpdateHttpExecutor } from '../../lib/types/update-http-executor.js'
-import { qualifyUpdateDialogs } from './update-dialogs.mjs'
+import { captureRenderedWindow, qualifyUpdateDialogs } from './update-dialogs.mjs'
 
 const root = process.env.DSH_LOCAL_UPDATE_TEST_ROOT
 assert.ok(root, 'The launcher must allocate a private test root')
@@ -329,13 +329,9 @@ async function main() {
         await contents.executeJavaScript("document.getElementById('later').click()")
         await until(`document.getElementById('update').textContent === ${JSON.stringify(messages.mandatoryContinue)} && !document.getElementById('update').disabled`)
         assert.equal(f.installations.length, 0)
-        let capture
-        try { capture = await window.webContents.capturePage() }
-        catch (error) { screenshot = { captured: false, reason: String(error) } }
-        if (capture !== undefined) {
-          await writeFile(join(root, 'mandatory-update.png'), capture.toPNG())
-          screenshot = { captured: true }
-        }
+        const capture = await captureRenderedWindow(window, 'mandatory-update.png', contents)
+        await writeFile(join(root, 'mandatory-update.png'), capture.toPNG())
+        screenshot = { captured: true }
         const restartRequested = Promise.withResolvers()
         f.restart(async () => { restartRequested.resolve(); return false })
         await contents.executeJavaScript("document.getElementById('update').click()")
@@ -353,7 +349,7 @@ async function main() {
             assert.equal(await contents.executeJavaScript("document.getElementById('technical-details-label').click(); document.getElementById('technical-details').open"), true)
           }
           const name = expanded ? 'mandatory-error-expanded.png' : 'mandatory-error-collapsed.png'
-          await writeFile(join(root, name), (await window.webContents.capturePage()).toPNG())
+          await writeFile(join(root, name), (await captureRenderedWindow(window, name, contents)).toPNG())
           dialogScreenshots.push(name)
         }
         assert.equal(policy.state.blocking, true)

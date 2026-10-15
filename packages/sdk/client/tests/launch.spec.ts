@@ -167,16 +167,18 @@ describe('SDK dsh launch resolution', () => {
     },
   )
 
-  it('localizes package resolution failures and preserves version/path values', () => {
+  it.each(['ja', 'zh'] as const)('localizes package resolution failures and preserves version/path values (%s)', (language) => {
     const pair = manifestPair({ version: '2.0.0', bin: 'bin.js' }, { version: '1.0.0' })
-    expect(() => resolveDshBinFromManifests(pair.dshUrl, pair.clientUrl, 'ja'))
-      .toThrow('dsh SDK クライアント 1.0.0 には同じ dsh バージョンが必要です。実際: 2.0.0')
+    expect(() => resolveDshBinFromManifests(pair.dshUrl, pair.clientUrl, language))
+      .toThrow(language === 'ja' ? 'dsh SDK クライアント 1.0.0 には同じ dsh バージョンが必要です。実際: 2.0.0' : 'dsh SDK 客户端 1.0.0 需要相同的 dsh 版本，实际为 2.0.0')
     const missing = manifestPair({ version: '1.0.0' }, { version: '1.0.0' })
-    expect(() => resolveDshBinFromManifests(missing.dshUrl, missing.clientUrl, 'ja'))
-      .toThrow('@deepseek-ai/dsh に dsh 実行ファイルの宣言がありません')
+    expect(() => resolveDshBinFromManifests(missing.dshUrl, missing.clientUrl, language))
+      .toThrow(language === 'ja' ? '@deepseek-ai/dsh に dsh 実行ファイルの宣言がありません' : '@deepseek-ai/dsh 未声明 dsh 可执行文件')
     const source = manifestPair({ version: '1.0.0', bin: 'lib/bin.js' }, { version: '1.0.0' })
-    expect(() => resolveDshNodeLaunchFromManifests(source.dshUrl, source.clientUrl, undefined, 'ja'))
-      .toThrow(`@deepseek-ai/dsh のビルド済み実行ファイル ${join(source.root, 'lib/bin.js')} と起動に必要なソースファイル一式`)
+    expect(() => resolveDshNodeLaunchFromManifests(source.dshUrl, source.clientUrl, undefined, language))
+      .toThrow(language === 'ja'
+        ? `@deepseek-ai/dsh のビルド済み実行ファイル ${join(source.root, 'lib/bin.js')} と起動に必要なソースファイル一式`
+        : `@deepseek-ai/dsh 缺少已构建的可执行文件 ${join(source.root, 'lib/bin.js')} 和完整的源启动文件`)
   })
 
 })
