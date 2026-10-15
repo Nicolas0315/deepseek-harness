@@ -8,7 +8,7 @@ import { app, BrowserWindow, protocol } from 'electron'
 import { DesktopUpdateDialog } from '../../lib/types/update-dialog.js'
 import { DesktopUpdateOverlays } from '../../lib/types/update-overlay.js'
 import { DesktopBackgroundNotice } from '../../lib/types/background-notice.js'
-import { desktopUpdateReadyConfirmation, resolveDesktopLocale } from '../../lib/types/locale.js'
+import { desktopUpdateReadyConfirmation } from '../../lib/types/locale.js'
 
 async function rendered(window) {
   await window.webContents.executeJavaScript(`new Promise((resolve, reject) => {
@@ -20,8 +20,7 @@ async function rendered(window) {
 }
 
 /** Exercise cancellation and explicit installation through the production preload and renderer. */
-export async function qualifyUpdateDialogs(root, fixture) {
-  const locale = resolveDesktopLocale('zh-CN')
+export async function qualifyUpdateDialogs(root, fixture, locale) {
   const messages = locale.messages
   const screenshots = []
   protocol.handle('dsh-app', async request => {
@@ -54,6 +53,7 @@ export async function qualifyUpdateDialogs(root, fixture) {
       await once(window.webContents, 'did-finish-load', { signal: AbortSignal.timeout(10_000) })
       await rendered(window)
       const view = await window.webContents.executeJavaScript(`({
+        language: document.documentElement.lang,
         title: document.getElementById('title').textContent,
         detail: document.getElementById('detail').textContent,
         buttons: [...document.querySelectorAll('#actions button')].map(button => button.textContent),
@@ -62,7 +62,7 @@ export async function qualifyUpdateDialogs(root, fixture) {
         primary: getComputedStyle(document.querySelector('.primary')).backgroundColor,
         focused: document.activeElement.id, isolated: typeof window.require === 'undefined',
       })`)
-      assert.deepEqual(view, { title: options.message, detail: options.detail, buttons: options.buttons,
+      assert.deepEqual(view, { language: locale.id, title: options.message, detail: options.detail, buttons: options.buttons,
         width: 380, radius: '24px', primary: 'rgb(15, 17, 21)', focused: 'dialog', isolated: true })
       assert.equal(await parent.webContents.executeJavaScript('getComputedStyle(document.body).filter'), 'none')
       assert.equal(f.installations.length, 0)
@@ -134,7 +134,9 @@ export async function qualifyUpdateDialogs(root, fixture) {
           message: document.getElementById('title').textContent,
           buttons: [...document.querySelectorAll('#actions button')].map(button => button.textContent),
           detailHidden: document.getElementById('detail').hidden,
-        })`), JSON.parse(await readFile(new URL('../expected/background-close-confirmation.json', import.meta.url), 'utf8')))
+        })`), JSON.parse(await readFile(new URL(locale.id === 'zh-CN'
+          ? '../expected/background-close-confirmation.json'
+          : `../expected/background-close-confirmation-${locale.id}.json`, import.meta.url), 'utf8')))
         await assert.rejects(access(markerPath))
         const closedNotice = once(noticeWindow, 'closed', { signal: AbortSignal.timeout(10_000) })
         if (confirm) {

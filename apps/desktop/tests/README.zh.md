@@ -42,6 +42,8 @@ Host、客户端与 Desktop 产物构建完成后，在 Windows 仓库根目录�
 
 本地命令构建 Desktop，并在 Electron 44 中运行真实 HTTP updater、策略客户端、沙箱预加载和强更页面。它记录每个场景，并把报告保存在 `.desktop-build/qualification/local-updater-*`。安装器调用、外部浏览器和剪贴板均替换为观测记录；下载字节不是可执行安装器。
 
+在交互式 Windows 桌面会话中运行本地 updater 命令，使 Electron 能渲染和捕获窗口。设置 `DSH_LOCAL_UPDATE_TEST_LOCALE` 为 `en`、`zh-CN`（默认）或 `ja-JP`，选择常规弹窗、后台提示和强更页面的语言；其他值会在场景执行前报错。报告包含所选语言。服务端提供的策略文本保留原文，shell 自有的导航、复制反馈和确认文案则与字典值和各语言的预期输出精确比对。
+
 打包监督 fixture 控制自己的 Git 元数据，并使用真实文件哈希和无签名行为的子进程。Git 提交或工作区变化仍会拒绝打包；并发测试不会改变该 fixture 记录的 Git 输入。
 
 | 层次 | 观测结果 |

@@ -52,7 +52,7 @@ import { createTrajectoryDurationStore } from '../src/client/duration-store.ts'
 import { EMPTY_TRAJECTORY_SNAPSHOT } from '../src/client/trajectory-snapshot-builder.ts'
 import type { TrajectorySnapshot } from '../src/client/trajectory-contract.ts'
 import { deriveTrajectoryTimeline } from '../src/client/timeline.ts'
-import { t as tTrajectory, tZh } from './locale.client.ts'
+import { t as tTrajectory, tJa, tZh } from './locale.client.ts'
 
 // Every session-scope fixture carries the resource hook the resources plugin merges into GlobalStandardProps.
 const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined, reload: () => {} })) as GlobalStandardProps['useResource']
@@ -791,6 +791,50 @@ describe('timeline projection', () => {
       ],
     }],
   }] satisfies readonly TrajectoryTurnModel[]
+
+  it('shows Japanese recorded start and end clocks in the local timezone', () => {
+    const NativeDateTimeFormat = Intl.DateTimeFormat
+    const clock = vi.spyOn(Date.prototype, 'toLocaleTimeString').mockImplementation(function (this: Date, locales, options) {
+      return new NativeDateTimeFormat(locales, { ...options, timeZone: 'Asia/Tokyo' }).format(this)
+    })
+    vi.useFakeTimers()
+    try {
+      const view = render(
+        <LocalizedTrajectoryTimeline
+          t={tJa}
+          turns={[{
+            turn: 1,
+            groups: [{
+              title: 'Step 1',
+              cells: [{
+                index: 1, kind: 'message', text: 'assistant',
+                startedAt: Date.parse('2026-01-15T00:08:07.456Z'), timeSeconds: 2,
+              }],
+            }],
+          }]}
+          mode="actual"
+          range={null}
+          onRangeChange={vi.fn()}
+        />,
+      )
+      const span = view.container.querySelector<HTMLElement>('[data-timeline-span="message"]')
+      expect(span).not.toBeNull()
+      fireEvent.mouseEnter(span as HTMLElement)
+      act(() => { vi.advanceTimersByTime(500) })
+      expect(screen.getByRole('tooltip').textContent).toContain('09:08:07.456 → 09:08:09.456')
+      expect(clock).toHaveBeenCalledTimes(2)
+      expect(clock).toHaveBeenNthCalledWith(1, 'ja-JP', {
+        hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3,
+      })
+      expect(clock).toHaveBeenNthCalledWith(2, 'ja-JP', {
+        hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3,
+      })
+    } finally {
+      cleanup()
+      vi.useRealTimers()
+      clock.mockRestore()
+    }
+  })
   const longTurns = [{
     turn: 1,
     groups: [{

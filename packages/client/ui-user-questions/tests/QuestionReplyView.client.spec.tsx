@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { useDisclosure } from '@deepseek-ai/dsh-client-ui-chat/src/client/chat/use-disclosure.ts'
-import { zh } from '../src/client/locales.ts'
+import { ja, zh } from '../src/client/locales.ts'
 import { QuestionReplyBubble, QuestionReplyView } from '../src/client/QuestionReplyView.tsx'
 import type { QuestionReplyData } from '../src/client/question-reply.ts'
 
@@ -44,6 +44,24 @@ const data = {
   time: 1,
 } satisfies QuestionReplyData
 describe('QuestionReplyView', () => {
+  it('formats the Japanese reply clock in the local timezone', () => {
+    const NativeDateTimeFormat = Intl.DateTimeFormat
+    const clock = vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(function (locales, options) {
+      return new NativeDateTimeFormat(locales, { ...options, timeZone: 'Asia/Tokyo' })
+    })
+    try {
+      render(<QuestionReplyBubble
+        data={{ ...data, time: Date.parse('2026-01-15T00:08:07.456Z') }}
+        t={makeTranslate(ja)}
+      />)
+      expect(screen.getByText('09:08')).toBeTruthy()
+      expect(clock).toHaveBeenCalledWith('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false })
+    } finally {
+      cleanup()
+      clock.mockRestore()
+    }
+  })
+
   it('reopens the settled question details from the history bubble', () => {
     render(<QuestionReplyBubble data={data} t={t} />)
 

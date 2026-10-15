@@ -42,6 +42,8 @@ With Host, client, and Desktop artifacts built, run `node --import tsx apps/desk
 
 The local command builds Desktop and executes Electron 44 with the actual HTTP updater, policy client, sandboxed preload, and mandatory renderer. It records each scenario and preserves its report under `.desktop-build/qualification/local-updater-*`. The installer call, external browser, and clipboard are observation substitutes; downloaded bytes are not an executable installer.
 
+Run the local updater command from an interactive Windows desktop session so Electron can render and capture its windows. Set `DSH_LOCAL_UPDATE_TEST_LOCALE` to `en`, `zh-CN` (default), or `ja-JP` to select the ordinary dialogs, background notice, and mandatory-update renderer language; other values fail before the scenarios run. Reports include the selected locale. Server-supplied policy text stays verbatim, while shell-owned navigation, copy feedback, and confirmation text use exact dictionary values and locale-specific expected output.
+
 Packaging supervision fixtures control their Git metadata and use real file hashes with inert child processes. Git-head and worktree changes still refuse packaging; concurrent tests cannot change the fixture’s recorded Git inputs.
 
 | Layer | Observed result |
