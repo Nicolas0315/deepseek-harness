@@ -218,22 +218,31 @@ describe.skipIf(process.platform === 'win32')('terminal-bash real shell', () => 
   }, 10_000)
 
   it('signals a foreground command and kills a TERM-ignoring background descendant', async () => {
-    const { ctx, agent } = await harness('danger-full-access')
+    const { ctx, root, agent } = await harness('danger-full-access')
     const created = await ctx.terminals.spawn(agent, { type: 'shell' })
-
-    const foreground = ctx.terminals.startSend(agent, created.sessionId, { text: 'sleep 60', submit: true })
-    await new Promise(resolve => setTimeout(resolve, 50))
-    expect((await ctx.terminals.signal(agent, created.sessionId, 'SIGINT')).delivered).toBe(true)
-    expectReadyForNextSend((await foreground.done).waitReason)
-
-    const background = ctx.terminals.startSend(agent, created.sessionId, {
-      text: 'sh -c \'trap "" TERM; sleep 60\' & echo CHILD=$!',
+    const foregroundPidFile = join(root, 'foreground.pid')
+    const foreground = ctx.terminals.startSend(agent, created.sessionId, {
+      text: `sh -c 'printf "%s" "$$" > "$1.tmp"; mv "$1.tmp" "$1"; exec sleep 60' dsh "${foregroundPidFile}"`,
       submit: true,
     })
-    const output = (await background.done).viewport
-    const child = /CHILD=(\d+)/.exec(output)?.[1]
-    expect(child).toBeDefined()
-    const pid = Number(child)
+    await expect.poll(() => existsSync(foregroundPidFile), { timeout: 2_000 }).toBe(true)
+    const foregroundPid = Number(readFileSync(foregroundPidFile, 'utf8'))
+    expect(foregroundPid).toBeGreaterThan(0)
+    expect(processIsRunning(foregroundPid)).toBe(true)
+    expect((await ctx.terminals.signal(agent, created.sessionId, 'SIGINT')).delivered).toBe(true)
+    expectReadyForNextSend((await foreground.done).waitReason)
+    await expect.poll(() => processIsRunning(foregroundPid), { timeout: 2_000 }).toBe(false)
+
+    const backgroundPidFile = join(root, 'background.pid')
+    const background = ctx.terminals.startSend(agent, created.sessionId, {
+      text: `sh -c 'trap "" TERM; printf "%s" "$$" > "$1.tmp"; mv "$1.tmp" "$1"; exec sleep 60' dsh "${backgroundPidFile}" &`,
+      submit: true,
+    })
+    await background.done
+    // The child publishes its identity after installing the trap, independently of prompt delivery.
+    await expect.poll(() => existsSync(backgroundPidFile), { timeout: 2_000 }).toBe(true)
+    const pid = Number(readFileSync(backgroundPidFile, 'utf8'))
+    expect(pid).toBeGreaterThan(0)
     expect(processIsRunning(pid)).toBe(true)
     await ctx.terminals.kill(agent, created.sessionId)
     // Linux can retain a stopped descendant as a zombie until its parent reaps it.
